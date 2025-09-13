@@ -168,15 +168,39 @@
         }
         
         // --- Effects ---
+        function Effect(color, size) {
+            this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
+            this.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true });
+            this.mesh = new THREE.Mesh(this.geometry, this.material);
+            this.mesh.visible = false;
+            this.life = 0;
+        }
+        Effect.prototype.activate = function(position) {
+            this.mesh.position.copy(position);
+            this.mesh.visible = true;
+            this.mesh.scale.set(1, 1, 1);
+            this.material.opacity = 1;
+            this.life = 1;
+        };
+        Effect.prototype.update = function(delta) {
+            if (this.life > 0) {
+                this.life -= delta * 2;
+                this.material.opacity = this.life;
+                this.mesh.scale.multiplyScalar(1 + delta * 5);
+                if (this.life <= 0) this.mesh.visible = false;
+            }
+        };
+
         const hitEffects = Array.from({length: 5}, () => new Effect(0xffff00, 0.05));
         const blockEffects = Array.from({length: 5}, () => new Effect(0x00ffff, 0.03));
         hitEffects.forEach(e => scene.add(e.mesh));
         blockEffects.forEach(e => scene.add(e.mesh));
         let currentHitEffect = 0, currentBlockEffect = 0;
 
-        function Effect(color, size) { /* ... same as before ... */ }
-        Effect.prototype.activate = function(position) { /* ... */ };
-        Effect.prototype.update = function(delta) { /* ... */ };
+        function triggerEffect(pool, index, position) {
+            pool[index].activate(position);
+            return (index + 1) % pool.length;
+        }
 
         // --- UI & Game Mode Logic ---
         const modeSelectUI = document.getElementById('mode-select-ui');
@@ -194,6 +218,10 @@
             gameMode = 'ai';
             modeSelectUI.style.display = 'none';
             resetGame();
+        });
+        document.getElementById('play-again-btn').addEventListener('click', () => { 
+            if(gameMode === 'online' && conn?.open) conn.send({type:'reset'}); 
+            resetGame(); 
         });
         
         // --- AI Logic ---
@@ -217,11 +245,9 @@
                 }
             }
 
-            // Move towards player
             aiTargetPos.lerp(new THREE.Vector3(playerPos.x, 1.5, playerPos.z - 0.7), delta * 2);
             opponentHead.position.lerp(aiTargetPos, delta * 5);
             
-            // Execute state
             const blockPos = opponentHead.position.clone();
             const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
             switch(aiState) {
@@ -244,8 +270,101 @@
         }
 
         // --- Collision Detection ---
-        function checkCollisions() { /* ... similar logic to check my hits against opponent ... */ }
-        function checkAIHits() { /* ... new logic to check AI hits against me ... */ }
+        function checkCollisions() { // Player hits opponent
+            if (!opponentHead.visible || gameOver) return;
+
+            const myHands = [myHand1, myHand2];
+            const opponentHands = [opponentHand1, opponentHand2];
+            const myJointPos = new THREE.Vector3();
+            const opponentJointPos = new THREE.Vector3();
+            const opponentHeadPos = new THREE.Vector3();
+            opponentHead.getWorldPosition(opponentHeadPos);
+
+            for (const hand of myHands) {
+                if (!hand.joints || !hand.joints['wrist']?.visible) continue;
+
+                for (const joint of Object.values(hand.joints)) {
+                    joint.getWorldPosition(myJointPos);
+                    let wasBlocked = false;
+
+                    for (const oHand of opponentHands) {
+                        if (oHand.visible) {
+                            for (const oJoint of oHand.children) {
+                                oJoint.getWorldPosition(opponentJointPos);
+                                if (myJointPos.distanceTo(opponentJointPos) < 0.07) {
+                                    currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, myJointPos);
+                                    wasBlocked = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (wasBlocked) break;
+                    }
+                    if (wasBlocked) continue;
+
+                    if (myJointPos.distanceTo(opponentHeadPos) < 0.2) {
+                        currentHitEffect = triggerEffect(hitEffects, currentHitEffect, myJointPos);
+                        opponentHealth--;
+                        updateHealthBars();
+                        if (gameMode === 'online' && conn?.open) {
+                            conn.send({ type: 'hit' });
+                        }
+                        if (opponentHealth <= 0) {
+                            gameOver = true;
+                            document.getElementById('game-over-text').textContent = "YOU WIN!";
+                            document.getElementById('game-over-ui').style.display = 'block';
+                            if (gameMode === 'online' && conn?.open) {
+                                conn.send({ type: 'lose' });
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        function checkAIHits() { // AI hits player
+            if (gameMode !== 'ai' || !opponentHead.visible || gameOver) return;
+
+            const myHands = [myHand1, myHand2];
+            const opponentHands = [opponentHand1, opponentHand2];
+            const opponentHandPos = new THREE.Vector3();
+            const myJointPos = new THREE.Vector3();
+            const myHeadPos = renderer.xr.getCamera().position;
+
+            for (const oHand of opponentHands) {
+                if (!oHand.visible) continue;
+                oHand.getWorldPosition(opponentHandPos);
+                let wasBlocked = false;
+                
+                for (const myHand of myHands) {
+                    if (myHand.joints && myHand.joints['wrist']?.visible) {
+                        for (const myJoint of Object.values(myHand.joints)) {
+                            myJoint.getWorldPosition(myJointPos);
+                            if (opponentHandPos.distanceTo(myJointPos) < 0.1) {
+                                currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, opponentHandPos);
+                                wasBlocked = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(wasBlocked) break;
+                }
+                if (wasBlocked) continue;
+                
+                if (opponentHandPos.distanceTo(myHeadPos) < 0.25) {
+                    currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU LOSE";
+                        document.getElementById('game-over-ui').style.display = 'block';
+                    }
+                    return;
+                }
+            }
+        }
 
         // --- Game Flow ---
         function resetGame() {
@@ -262,30 +381,99 @@
         
         // --- PeerJS Logic ---
         let peer, conn;
-        function initializePeer() { /* ... same as before ... */ }
-        function setupConnection(newConn) { /* ... same as before, but resets game on connect ... */ }
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        function initializePeer() {
+            const myId = generateRandomId();
+            document.getElementById('my-id').textContent = myId;
+            peer = new Peer(myId);
+            peer.on('connection', setupConnection);
+            peer.on('error', (err) => { document.getElementById('status').textContent = `Error: ${err.type}`; });
+        }
+
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const peerId = document.getElementById('peer-id-input').value.trim();
+            if (!peerId) { document.getElementById('status').textContent = 'Please enter a friend\'s ID.'; return; }
+            if (conn) conn.close();
+            document.getElementById('status').textContent = `Connecting to ${peerId}...`;
+            setupConnection(peer.connect(peerId));
+        });
+
+        function setupConnection(newConn) {
+            conn = newConn;
+            document.getElementById('status').textContent = `Connected to ${conn.peer}`;
+            resetGame();
+
+            conn.on('data', (data) => {
+                if (gameOver) return;
+                if (data.type === 'hit') {
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU LOSE";
+                        document.getElementById('game-over-ui').style.display = 'block';
+                        if(conn?.open) conn.send({ type: 'lose' });
+                    }
+                } else if (data.type === 'lose') {
+                    gameOver = true;
+                    document.getElementById('game-over-text').textContent = "YOU WIN!";
+                    document.getElementById('game-over-ui').style.display = 'block';
+                } else if (data.type === 'reset') {
+                    resetGame();
+                } else {
+                    if (data.head) {
+                        opponentHead.position.fromArray(data.head.position);
+                        opponentHead.quaternion.fromArray(data.head.quaternion);
+                    }
+                    if (data.hands) {
+                        data.hands[0]?.forEach((pos, i) => opponentHand1.children[i]?.position.fromArray(pos));
+                        data.hands[1]?.forEach((pos, i) => opponentHand2.children[i]?.position.fromArray(pos));
+                    }
+                }
+            });
+
+            conn.on('close', () => {
+                document.getElementById('status').textContent = 'Connection closed.';
+                opponentHead.visible = false;
+                opponentHand1.visible = false;
+                opponentHand2.visible = false;
+                conn = null;
+            });
+        }
         
         // --- Animation Loop ---
         renderer.setAnimationLoop(() => {
             const delta = clock.getDelta();
             if(gameMode === 'ai' && !gameOver) updateAI(delta);
-            if(gameMode === 'online' && conn?.open && !gameOver) { /* ... send data ... */ }
-            checkCollisions();
+            if(gameMode === 'online' && conn?.open && !gameOver) {
+                 const xrCamera = renderer.xr.getCamera();
+                const data = {
+                    head: { position: xrCamera.position.toArray(), quaternion: xrCamera.quaternion.toArray() },
+                    hands: [myHand1, myHand2].map(hand => 
+                        (hand.joints && hand.joints['wrist']?.visible) ? 
+                        Object.values(hand.joints).map(j => j.position.toArray()) : []
+                    )
+                };
+                conn.send(data);
+            }
+            if (renderer.xr.isPresenting) {
+                 checkCollisions();
+            }
             hitEffects.forEach(e => e.update(delta));
             blockEffects.forEach(e => e.update(delta));
             renderer.render(scene, camera);
         });
 
         // --- Other stuff ---
-        window.addEventListener('resize', () => { /* ... */ });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
         if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/service-worker.js'); }); }
-
-        // Mocks for brevity
-        Effect.prototype.activate = function(pos) { this.mesh.position.copy(pos); this.mesh.visible = true; this.life=1; };
-        Effect.prototype.update = function(d) { if(this.life>0){ this.life-=d*2; this.mesh.scale.multiplyScalar(1+d*5); if(this.life<=0)this.mesh.visible=false;} };
-        document.getElementById('play-again-btn').addEventListener('click', () => { if(gameMode === 'online' && conn?.open) conn.send({type:'reset'}); resetGame(); });
-        function checkCollisions() { /* Placeholder */ }
-        function checkAIHits() { /* Placeholder */ }
     </script>
 </body>
 </html>
