@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webxr-boxing-v2.5'; // Incremented version
+const CACHE_NAME = 'webxr-boxing-v2.6'; // Incremented version
 const urlsToCache = [
   '/',
   '/index.html',
