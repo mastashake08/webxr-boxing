@@ -88,6 +88,7 @@
         
         // --- Constants & Game State ---
         const MAX_HEALTH = 5;
+        const MOVE_SPEED = 1.5;
         let myHealth = MAX_HEALTH;
         let opponentHealth = MAX_HEALTH;
         let gameOver = false;
@@ -99,7 +100,6 @@
         const scene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.6, 2);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -108,6 +108,13 @@
         document.body.appendChild(renderer.domElement);
         
         document.body.appendChild(VRButton.createButton(renderer));
+
+        // Player rig for movement
+        const player = new THREE.Group();
+        player.position.set(0, 0, 2);
+        player.add(camera);
+        scene.add(player);
+
 
         // --- Scene Content ---
         scene.add(new THREE.AmbientLight(0x404040, 2));
@@ -137,8 +144,7 @@
         opponentHealthBar.position.set(0.3, -0.3, -1);
         healthBarGroup.add(myHealthBar);
         healthBarGroup.add(opponentHealthBar);
-        camera.add(healthBarGroup);
-        scene.add(camera);
+        camera.add(healthBarGroup); // Attach to camera so it's always in view
 
         function updateHealthBars() {
             myHealthBar.children.forEach((s, i) => s.visible = i < myHealth);
@@ -158,9 +164,9 @@
 
         // Player controllers
         const controller1 = renderer.xr.getController(0);
-        scene.add(controller1);
+        player.add(controller1); // Add controllers to player rig
         const controller2 = renderer.xr.getController(1);
-        scene.add(controller2);
+        player.add(controller2);
         
         const fistGeometry = new THREE.SphereGeometry(0.05, 10, 10);
         const fistMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2, metalness: 0.8 });
@@ -226,14 +232,49 @@
             resetGame(); 
         });
         
+        // --- Player Movement ---
+        const playerDirection = new THREE.Vector3();
+        const joystick = new THREE.Vector2();
+        function handlePlayerMovement(delta) {
+            const session = renderer.xr.getSession();
+            if (!session) return;
+
+            let moveZ = 0;
+            let moveX = 0;
+
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.gamepad.axes.length >= 4) {
+                    const joystickX = source.gamepad.axes[2];
+                    const joystickY = source.gamepad.axes[3];
+                    
+                    if (Math.abs(joystickX) > 0.1) moveX = joystickX;
+                    if (Math.abs(joystickY) > 0.1) moveZ = joystickY;
+                }
+            }
+
+            if (moveX === 0 && moveZ === 0) return;
+
+            camera.getWorldDirection(playerDirection);
+            playerDirection.y = 0;
+            playerDirection.normalize();
+
+            const rightDirection = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), playerDirection).normalize();
+
+            const forwardMovement = playerDirection.multiplyScalar(-moveZ * MOVE_SPEED * delta);
+            const rightMovement = rightDirection.multiplyScalar(-moveX * MOVE_SPEED * delta);
+
+            player.position.add(forwardMovement).add(rightMovement);
+        }
+        
         // --- AI Logic ---
         let aiState = 'IDLE';
         let aiStateTimer = 0;
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
+        const playerWorldPos = new THREE.Vector3(); // To store player's world position
         function updateAI(delta) {
             aiStateTimer -= delta;
-            const playerPos = renderer.xr.getCamera().position;
-            const distanceToPlayer = opponentHead.position.distanceTo(playerPos);
+            camera.getWorldPosition(playerWorldPos);
+            const distanceToPlayer = opponentHead.position.distanceTo(playerWorldPos);
 
             if (aiStateTimer <= 0) {
                 const rand = Math.random();
@@ -246,14 +287,14 @@
                 }
             }
 
-            aiTargetPos.lerp(new THREE.Vector3(playerPos.x, 1.5, playerPos.z - 0.7), delta * 2);
+            aiTargetPos.lerp(new THREE.Vector3(playerWorldPos.x, playerWorldPos.y, playerWorldPos.z - 0.7), delta * 2);
             opponentHead.position.lerp(aiTargetPos, delta * 5);
             
             const blockPos = opponentHead.position.clone();
             const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
             switch(aiState) {
                 case 'ATTACKING':
-                    attackHand.position.lerp(playerPos, delta * 10);
+                    attackHand.position.lerp(playerWorldPos, delta * 10);
                     break;
                 case 'BLOCKING':
                     opponentHand1.position.lerp(blockPos.clone().add(new THREE.Vector3(-0.2, 0.1, -0.2)), delta * 8);
@@ -324,7 +365,7 @@
             const opponentHands = [opponentHand1, opponentHand2];
             const opponentHandPos = new THREE.Vector3();
             const myFistPos = new THREE.Vector3();
-            const myHeadPos = renderer.xr.getCamera().position;
+            camera.getWorldPosition(playerWorldPos);
 
             for (const oHand of opponentHands) {
                 if (!oHand.visible) continue;
@@ -341,7 +382,7 @@
                 }
                 if (wasBlocked) continue;
                 
-                if (opponentHandPos.distanceTo(myHeadPos) < 0.25) {
+                if (opponentHandPos.distanceTo(playerWorldPos) < 0.25) {
                     hitCooldown = 1.0;
                     currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
                     myHealth--;
@@ -365,6 +406,7 @@
             gameOverEl.style.display = 'none';
             peerEl.style.display = 'none';
             modeSelectEl.style.display = 'block';
+            player.position.set(0, 0, 2); // Reset player position
             if(gameMode){ // if a mode was selected
                 modeSelectEl.style.display = 'none';
                 opponentHead.visible = true;
@@ -418,15 +460,13 @@
                 } else if (data.type === 'reset') {
                     resetGame();
                 } else {
-                    if (data.head) {
-                        opponentHead.position.fromArray(data.head.position);
-                        opponentHead.quaternion.fromArray(data.head.quaternion);
-                    }
-                    if (data.controllers) {
-                        opponentHand1.position.fromArray(data.controllers[0].position);
-                        opponentHand1.quaternion.fromArray(data.controllers[0].quaternion);
-                        opponentHand2.position.fromArray(data.controllers[1].position);
-                        opponentHand2.quaternion.fromArray(data.controllers[1].quaternion);
+                    if (data.player) {
+                        opponentHead.position.fromArray(data.player.head.position);
+                        opponentHead.quaternion.fromArray(data.player.head.quaternion);
+                        opponentHand1.position.fromArray(data.player.controllers[0].position);
+                        opponentHand1.quaternion.fromArray(data.player.controllers[0].quaternion);
+                        opponentHand2.position.fromArray(data.player.controllers[1].position);
+                        opponentHand2.quaternion.fromArray(data.player.controllers[1].quaternion);
                     }
                 }
             });
@@ -446,15 +486,33 @@
             const delta = clock.getDelta();
             if (hitCooldown > 0) hitCooldown -= delta;
             
+            if (renderer.xr.isPresenting) {
+                 handlePlayerMovement(delta);
+            }
+            
             if(gameMode === 'ai' && !gameOver) updateAI(delta);
             if(gameMode === 'online' && conn?.open && !gameOver) {
-                const xrCamera = renderer.xr.getCamera();
+                camera.getWorldPosition(playerWorldPos);
+                const headData = { position: playerWorldPos.toArray(), quaternion: camera.quaternion.toArray() };
+
+                const controller1WorldPos = new THREE.Vector3();
+                const controller2WorldPos = new THREE.Vector3();
+                controller1.getWorldPosition(controller1WorldPos);
+                controller2.getWorldPosition(controller2WorldPos);
+
+                const controller1WorldQuat = new THREE.Quaternion();
+                const controller2WorldQuat = new THREE.Quaternion();
+                controller1.getWorldQuaternion(controller1WorldQuat);
+                controller2.getWorldQuaternion(controller2WorldQuat);
+                
                 const data = {
-                    head: { position: xrCamera.position.toArray(), quaternion: xrCamera.quaternion.toArray() },
-                    controllers: [
-                        { position: controller1.position.toArray(), quaternion: controller1.quaternion.toArray() },
-                        { position: controller2.position.toArray(), quaternion: controller2.quaternion.toArray() }
-                    ]
+                    player: {
+                        head: headData,
+                        controllers: [
+                            { position: controller1WorldPos.toArray(), quaternion: controller1WorldQuat.toArray() },
+                            { position: controller2WorldPos.toArray(), quaternion: controller2WorldQuat.toArray() }
+                        ]
+                    }
                 };
                 conn.send(data);
             }
