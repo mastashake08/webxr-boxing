@@ -14,18 +14,11 @@
             margin: 0;
             overflow: hidden; /* Prevent scrollbars */
         }
-        #container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-        #css-renderer {
+        #ui-container {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none; /* Let clicks pass through to canvas */
+            top: 20px;
+            left: 20px;
+            z-index: 100;
         }
         .ui-panel {
             width: 400px; /* Fixed width for VR display */
@@ -33,52 +26,55 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(55, 65, 81, 0.5);
             text-align: center;
-            pointer-events: auto; /* Re-enable pointer events for UI panels */
         }
-        canvas { display: block; }
+        canvas { 
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -1;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
-    <div id="container">
-        <!-- UI Elements will be moved into the 3D scene via CSS3DRenderer -->
-    </div>
-    
-    <!-- UI for Mode Selection -->
-    <div id="mode-select-ui" class="ui-panel p-6 rounded-lg shadow-xl">
-        <h1 class="text-2xl font-bold mb-4 text-cyan-400">XR Boxing</h1>
-        <p class="text-gray-300 mb-6">Choose your opponent.</p>
-        <div class="space-y-4">
-            <button id="play-online-btn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                Play Online
-            </button>
-            <button id="play-ai-btn" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                Fight AI
-            </button>
+    <div id="ui-container">
+        <!-- UI for Mode Selection -->
+        <div id="mode-select-ui" class="ui-panel p-6 rounded-lg shadow-xl">
+            <h1 class="text-2xl font-bold mb-4 text-cyan-400">XR Boxing</h1>
+            <p class="text-gray-300 mb-6">Choose your opponent.</p>
+            <div class="space-y-4">
+                <button id="play-online-btn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                    Play Online
+                </button>
+                <button id="play-ai-btn" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                    Fight AI
+                </button>
+            </div>
+        </div>
+
+        <!-- UI for PeerJS Connection -->
+        <div id="peer-ui" class="ui-panel p-4 rounded-lg shadow-xl" style="display: none;">
+            <h1 class="text-xl font-bold mb-2 text-cyan-400">WebXR Peer Connector</h1>
+            <div class="mb-3">
+                <label class="text-sm font-medium text-gray-400">Your ID:</label>
+                <div id="my-id" class="mt-1 p-2 bg-gray-900 rounded-md border border-gray-600 font-mono text-gray-300">Generating...</div>
+            </div>
+            <div class="mb-3">
+                <label for="peer-id-input" class="text-sm font-medium text-gray-400">Friend's ID:</label>
+                <input type="text" id="peer-id-input" placeholder="Enter friend's ID" class="w-full mt-1 p-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+            </div>
+            <button id="connect-btn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Connect</button>
+            <div id="status" class="mt-3 text-sm text-yellow-400 h-5"></div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-ui" class="ui-panel p-8 rounded-lg" style="display: none;">
+            <h2 id="game-over-text" class="text-4xl font-bold text-red-500 mb-4">YOU LOSE</h2>
+            <button id="play-again-btn" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Play Again</button>
         </div>
     </div>
 
-    <!-- UI for PeerJS Connection -->
-    <div id="peer-ui" class="ui-panel p-4 rounded-lg shadow-xl" style="display: none;">
-        <h1 class="text-xl font-bold mb-2 text-cyan-400">WebXR Peer Connector</h1>
-        <div class="mb-3">
-            <label class="text-sm font-medium text-gray-400">Your ID:</label>
-            <div id="my-id" class="mt-1 p-2 bg-gray-900 rounded-md border border-gray-600 font-mono text-gray-300">Generating...</div>
-        </div>
-        <div class="mb-3">
-            <label for="peer-id-input" class="text-sm font-medium text-gray-400">Friend's ID:</label>
-            <input type="text" id="peer-id-input" placeholder="Enter friend's ID" class="w-full mt-1 p-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-        </div>
-        <button id="connect-btn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Connect</button>
-        <div id="status" class="mt-3 text-sm text-yellow-400 h-5"></div>
-    </div>
-
-    <!-- Game Over Screen -->
-    <div id="game-over-ui" class="ui-panel p-8 rounded-lg" style="display: none;">
-        <h2 id="game-over-text" class="text-4xl font-bold text-red-500 mb-4">YOU LOSE</h2>
-        <button id="play-again-btn" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Play Again</button>
-    </div>
-
-    <!-- Button to Enter XR is dynamically added -->
+    <!-- Button to Enter XR is dynamically added by Three.js -->
 
     <!-- Dependencies -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -89,7 +85,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
-        import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
         
         // --- Constants & Game State ---
         const MAX_HEALTH = 5;
@@ -100,10 +95,8 @@
         let hitCooldown = 0; // Cooldown timer to prevent rapid hits
 
         // --- Basic Setup ---
-        const container = document.getElementById('container');
         const clock = new THREE.Clock();
         const scene = new THREE.Scene();
-        const cssScene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 2);
@@ -112,14 +105,9 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.xr.enabled = true;
-        container.appendChild(renderer.domElement);
-
-        const cssRenderer = new CSS3DRenderer();
-        cssRenderer.setSize(window.innerWidth, window.innerHeight);
-        cssRenderer.domElement.id = 'css-renderer';
-        container.appendChild(cssRenderer.domElement);
+        document.body.appendChild(renderer.domElement);
         
-        container.appendChild(VRButton.createButton(renderer));
+        document.body.appendChild(VRButton.createButton(renderer));
 
         // --- Scene Content ---
         scene.add(new THREE.AmbientLight(0x404040, 2));
@@ -156,25 +144,6 @@
             myHealthBar.children.forEach((s, i) => s.visible = i < myHealth);
             opponentHealthBar.children.forEach((s, i) => s.visible = i < opponentHealth);
         }
-
-        // --- 3D UI ---
-        const uiGroup = new THREE.Group();
-        uiGroup.position.set(0, 1.5, -1.2);
-        cssScene.add(uiGroup); // Add group to the CSS scene
-
-        const modeSelectEl = document.getElementById('mode-select-ui');
-        const modeSelectObj = new CSS3DObject(modeSelectEl);
-        uiGroup.add(modeSelectObj);
-        
-        const peerEl = document.getElementById('peer-ui');
-        const peerObj = new CSS3DObject(peerEl);
-        peerObj.visible = false;
-        uiGroup.add(peerObj);
-        
-        const gameOverEl = document.getElementById('game-over-ui');
-        const gameOverObj = new CSS3DObject(gameOverEl);
-        gameOverObj.visible = false;
-        uiGroup.add(gameOverObj);
         
         // --- Avatars ---
         const opponentHead = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.3, 0.2), new THREE.MeshStandardMaterial({ color: 0xff4400 }));
@@ -234,10 +203,14 @@
         }
 
         // --- UI & Game Mode Logic ---
+        const modeSelectEl = document.getElementById('mode-select-ui');
+        const peerEl = document.getElementById('peer-ui');
+        const gameOverEl = document.getElementById('game-over-ui');
+        
         document.getElementById('play-online-btn').addEventListener('click', () => {
             gameMode = 'online';
-            modeSelectObj.visible = false;
-            peerObj.visible = true;
+            modeSelectEl.style.display = 'none';
+            peerEl.style.display = 'block';
             initializePeer();
             opponentHead.material.color.setHex(0x0099ff);
             opponentHand1.material.color.setHex(0x0099ff);
@@ -245,7 +218,7 @@
         });
         document.getElementById('play-ai-btn').addEventListener('click', () => {
             gameMode = 'ai';
-            modeSelectObj.visible = false;
+            modeSelectEl.style.display = 'none';
             resetGame();
         });
         document.getElementById('play-again-btn').addEventListener('click', () => { 
@@ -335,7 +308,7 @@
                     if (opponentHealth <= 0) {
                         gameOver = true;
                         document.getElementById('game-over-text').textContent = "YOU WIN!";
-                        gameOverObj.visible = true;
+                        gameOverEl.style.display = 'block';
                         if (gameMode === 'online' && conn?.open) {
                             conn.send({ type: 'lose' });
                         }
@@ -376,7 +349,7 @@
                     if (myHealth <= 0) {
                         gameOver = true;
                         document.getElementById('game-over-text').textContent = "YOU LOSE";
-                        gameOverObj.visible = true;
+                        gameOverEl.style.display = 'block';
                     }
                     return;
                 }
@@ -389,11 +362,16 @@
             opponentHealth = MAX_HEALTH;
             gameOver = false;
             hitCooldown = 0;
-            gameOverObj.visible = false;
-            opponentHead.visible = true;
-            opponentHand1.visible = true;
-            opponentHand2.visible = true;
-            if(gameMode === 'ai') aiStateTimer = 2; // Grace period
+            gameOverEl.style.display = 'none';
+            peerEl.style.display = 'none';
+            modeSelectEl.style.display = 'block';
+            if(gameMode){ // if a mode was selected
+                modeSelectEl.style.display = 'none';
+                opponentHead.visible = true;
+                opponentHand1.visible = true;
+                opponentHand2.visible = true;
+                 if(gameMode === 'ai') aiStateTimer = 2; // Grace period
+            }
             updateHealthBars();
         }
         
@@ -420,6 +398,7 @@
             conn = newConn;
             document.getElementById('status').textContent = `Connected to ${conn.peer}`;
             resetGame();
+            peerEl.style.display = 'none';
 
             conn.on('data', (data) => {
                 if (gameOver) return;
@@ -429,13 +408,13 @@
                     if (myHealth <= 0) {
                         gameOver = true;
                         document.getElementById('game-over-text').textContent = "YOU LOSE";
-                        gameOverObj.visible = true;
+                        gameOverEl.style.display = 'block';
                         conn?.open && conn.send({ type: 'lose' });
                     }
                 } else if (data.type === 'lose') {
                     gameOver = true;
                     document.getElementById('game-over-text').textContent = "YOU WIN!";
-                    gameOverObj.visible = true;
+                    gameOverEl.style.display = 'block';
                 } else if (data.type === 'reset') {
                     resetGame();
                 } else {
@@ -458,6 +437,7 @@
                 opponentHand1.visible = false;
                 opponentHand2.visible = false;
                 conn = null;
+                resetGame(); // Go back to main menu
             });
         }
         
@@ -466,15 +446,6 @@
             const delta = clock.getDelta();
             if (hitCooldown > 0) hitCooldown -= delta;
             
-            if (renderer.xr.isPresenting) {
-                const xrCamera = renderer.xr.getCamera();
-                // Make UI follow camera
-                uiGroup.position.copy(xrCamera.position);
-                uiGroup.quaternion.copy(xrCamera.quaternion);
-                uiGroup.translateZ(-1.2); // Move it in front
-                uiGroup.lookAt(xrCamera.position); // Make it face the camera
-            }
-
             if(gameMode === 'ai' && !gameOver) updateAI(delta);
             if(gameMode === 'online' && conn?.open && !gameOver) {
                 const xrCamera = renderer.xr.getCamera();
@@ -487,14 +458,13 @@
                 };
                 conn.send(data);
             }
-            if (renderer.xr.isPresenting) {
+            if (renderer.xr.isPresenting && gameMode) {
                  checkCollisions();
             }
             hitEffects.forEach(e => e.update(delta));
             blockEffects.forEach(e => e.update(delta));
 
             renderer.render(scene, camera);
-            cssRenderer.render(cssScene, camera); // Render UI separately
         });
 
         // --- Window Resizing ---
@@ -502,9 +472,11 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            cssRenderer.setSize(window.innerWidth, window.innerHeight);
         });
         if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/service-worker.js'); }); }
+
+        // Initialize game state
+        resetGame();
     </script>
 </body>
 </html>
