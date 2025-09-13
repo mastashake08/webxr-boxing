@@ -103,6 +103,7 @@
         const container = document.getElementById('container');
         const clock = new THREE.Clock();
         const scene = new THREE.Scene();
+        const cssScene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 2);
@@ -159,7 +160,7 @@
         // --- 3D UI ---
         const uiGroup = new THREE.Group();
         uiGroup.position.set(0, 1.5, -1.2);
-        scene.add(uiGroup); // Add group to main scene to follow camera
+        cssScene.add(uiGroup); // Add group to the CSS scene
 
         const modeSelectEl = document.getElementById('mode-select-ui');
         const modeSelectObj = new CSS3DObject(modeSelectEl);
@@ -493,7 +494,7 @@
             blockEffects.forEach(e => e.update(delta));
 
             renderer.render(scene, camera);
-            cssRenderer.render(uiGroup, camera); // Render UI separately
+            cssRenderer.render(cssScene, camera); // Render UI separately
         });
 
         // --- Window Resizing ---
