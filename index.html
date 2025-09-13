@@ -104,6 +104,7 @@
         // --- Basic Setup ---
         const clock = new THREE.Clock();
         const scene = new THREE.Scene();
+        let audioContext;
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         
@@ -148,7 +149,7 @@
             const group = new THREE.Group();
             for (let i = 0; i < MAX_HEALTH; i++) {
                 const segment = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.01), new THREE.MeshStandardMaterial({ color }));
-                segment.position.x = (i - (MAX_HEALTH - 1) / 2) * 0.05;
+                segment.position.x = (i - (MAX_HEALTH - 1)) / 2 * 0.05;
                 group.add(segment);
             }
             return group;
@@ -207,7 +208,7 @@
             const playerRightGlove = baseModel.clone();
             // Mirror the glove for the right hand by inverting the X scale
             playerRightGlove.scale.set(-scale, scale, scale);
-            playerRightGlove.rotation.set(0, Math.PI / 2, 0); // Rotate to face forward
+            playerRightGlove.rotation.set(0, Math.PI / 2 + Math.PI, 0); // Rotate to face forward and flip
             myFist2.add(playerRightGlove);
 
 
@@ -220,7 +221,7 @@
             const opponentRightGlove = baseModel.clone();
             // Mirror the glove for the right hand
             opponentRightGlove.scale.set(-scale, scale, scale);
-            opponentRightGlove.rotation.set(0, -Math.PI / 2, 0); // Rotate to face player
+            opponentRightGlove.rotation.set(0, -Math.PI / 2 + Math.PI, 0); // Rotate to face player and flip
             opponentHand2.add(opponentRightGlove);
 
         }, undefined, (error) => {
@@ -244,6 +245,26 @@
         controller1.add(myFist1);
         controller2.add(myFist2);
         
+        // --- Web Audio ---
+        function playHitSound() {
+            if (!audioContext) return;
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
         // --- Effects ---
         function Effect(color, size) {
             this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
@@ -351,6 +372,11 @@
         const restartMsgEl = document.getElementById('restart-message');
         
         function startGameAndEnterVR(mode) {
+            // Initialize AudioContext on user gesture
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
             gameMode = mode;
             modeSelectEl.style.display = 'none';
 
@@ -485,6 +511,7 @@
                 if (fistPos.distanceTo(opponentHeadPos) < 0.2) { // Using collider size
                     hitCooldown = 1.0;
                     currentHitEffect = triggerEffect(hitEffects, currentHitEffect, fistPos);
+                    playHitSound();
                     opponentHealth--;
                     updateHealthBars();
                     if (gameMode === 'online' && conn?.open) {
@@ -530,6 +557,7 @@
                 if (opponentHandPos.distanceTo(playerWorldPos) < 0.25) {
                     hitCooldown = 1.0;
                     currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
+                    playHitSound();
                     myHealth--;
                     updateHealthBars();
                     if (myHealth <= 0) {
@@ -556,6 +584,7 @@
                         fist.getWorldPosition(fistPos);
                         if (fistPos.distanceTo(sphere.position) < 0.2) {
                             currentHitEffect = triggerEffect(hitEffects, currentHitEffect, sphere.position);
+                            playHitSound();
                             sphere.userData.active = false;
                             sphere.visible = false;
                             return; 
@@ -565,6 +594,7 @@
                     if (playerWorldPos.distanceTo(sphere.position) < 0.3) {
                         hitCooldown = 1.0;
                         currentHitEffect = triggerEffect(hitEffects, currentHitEffect, playerWorldPos);
+                        playHitSound();
                         myHealth--;
                         updateHealthBars();
                         sphere.userData.active = false;
