@@ -261,6 +261,31 @@
             oscillator.stop(audioContext.currentTime + 0.1);
         }
 
+        function playBellSound() {
+            if (!audioContext) return;
+            const gainNode = audioContext.createGain();
+            gainNode.connect(audioContext.destination);
+            
+            const osc1 = audioContext.createOscillator();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(440, audioContext.currentTime);
+            
+            const osc2 = audioContext.createOscillator();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(880 * 1.1, audioContext.currentTime);
+
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+
+            gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 2.0);
+
+            osc1.start(audioContext.currentTime);
+            osc2.start(audioContext.currentTime);
+            osc1.stop(audioContext.currentTime + 2.0);
+            osc2.stop(audioContext.currentTime + 2.0);
+        }
+
         // --- Effects ---
         function Effect(color, size) {
             this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
@@ -375,6 +400,7 @@
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
+            playBellSound();
             gameMode = mode;
             modeSelectEl.style.display = 'none';
             if (mode === 'online') {
