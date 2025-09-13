@@ -491,6 +491,7 @@
             const nextPos = player.position.clone().add(movementVector);
             nextPos.x = THREE.MathUtils.clamp(nextPos.x, -ARENA_BOUNDARY, ARENA_BOUNDARY);
             nextPos.z = THREE.MathUtils.clamp(nextPos.z, -ARENA_BOUNDARY, ARENA_BOUNDARY);
+            nextPos.y = 1.6;
             player.position.copy(nextPos);
         }
         
