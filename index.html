@@ -111,6 +111,8 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.xr.enabled = true;
+        renderer.shadowMap.enabled = true; // Enable shadows
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
         
         const vrButton = VRButton.createButton(renderer);
@@ -124,12 +126,19 @@
 
 
         // --- Scene Content ---
-        scene.add(new THREE.AmbientLight(0x404040, 2));
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        scene.add(new THREE.AmbientLight(0x666666, 1));
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        hemisphereLight.position.set(0, 3, 0);
+        scene.add(hemisphereLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
         directionalLight.position.set(1, 3, 2);
+        directionalLight.castShadow = true;
         scene.add(directionalLight);
+        
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.2, roughness: 0.8 }));
         floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
         scene.add(floor);
 
         // --- Health Bars (In-VR) ---
@@ -174,23 +183,46 @@
 
 
         const loader = new GLTFLoader();
-        // Updated path to your local model.
-        // NOTE: For this to work, you must be running a local web server in the project's root directory.
-        // Opening the HTML file directly will cause a CORS error.
         const boxingGloveUrl = 'https://sketchfab-prod-media.s3.amazonaws.com/archives/5b464201104949e09f77f2d1cf8b60c3/glb/6036e444c8f745f794e34e875421d684/boxing_glove.glb?AWSAccessKeyId=ASIAZ4EAQ242FRX75XEL&Signature=fIyrdTr8YxKdUc8YYFo4mSZrCcc%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEMb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCWV1LXdlc3QtMSJGMEQCIFhi2LRpHoAd0DVY7s9QRd9O9rdjZ05r6y7yMJnkDefzAiAlVutpH5NFvQ28U3WW14ibiaFXp3bIAMxK51M%2Bhe8mXiqyBQg%2FEAAaDDY3ODg3NDM3MTg5MiIMT5MiUgGkpkgS%2BkdwKo8FDRar7TipEwoPXb7YIhuji3w1L4gRgcgPGnrzIN%2FOj48y4M3HaA7qdlds5vLZG3z1aHqL02CSgMfFSxHoIiKCz%2FS%2B%2B6CAR%2Fo5EM6eKS%2BuOahAj%2BSvrDoWPZ23%2BYLBSZxcDVamGVTSPrSlauo4Qroq4hrw6LlPV%2FsEFI180AEDERfG6gFmZE4q98wR%2BMb%2FbRUmej2Fcp%2FDMYoXp62c7jBH6Kp621DdzAjMCUThleiM3PQtvw9pAJfzsXppJEUdp9RRqdwn%2FdqDlE%2FDB15PUduIos8%2BEd6dSy9c%2BGzqJ237DIqaGc8DRWNS1EFhCG%2Fe0yB6yMZiaEbHDYnqtS%2BwlOhf8yd8W8%2FpneNFC2HWRonUT1TZ%2BZxRzyqbnR8bg%2F8XojNrWNYnHbVF31GU4wduCTHT2jVnafo09SSUQXWx689ewDe1n1zb4VjT26NtGhuaxUlxV5p7AJDYDQItMtZndPjtpa1a8ZZbFj921o8Khega8FS%2BhV1VIOfrSnxPtysjoFevm7bMot7AU6SxPn3YE9eoQhc9PryB1rE7yXhFPFzSkBhpn8mQTike1KLPwHYK7%2Fx5evHgHopf8D8qM4pXWezFcSppZ1STa1bZKQqji8GktE0zSqGN3G6Hvb3Fg%2FsP5JsY3NqGLFTIjHvyLTslF1dsMqdRnU9dfMGTX3L7KRs%2FWLa%2FBt50yX%2B9Q9aCFha1w6aJjbTOpIElQgqzfOzaXICcioYy86QpD%2BVPe4rrHwtcRgXwNxHNH0aybQ4SgfUoyLDRBeuIQSeKl6HvkkE37touiSdtjj6ik2YOAlcrbMKLIVHeCMmZ5vUn2YBWbULKVa08twkgVKMghKqwyn4n4QmcjV7S46fEIZ5R2i%2FsoGF9CzCeipTGBjqyAQUtE00sV5dRTJ0L2yeLSDZR6nILq1WsyL4t2Orxa04%2Bo2KL8zC3jeJl5mbkTBDZIWZXkreQfiNGpIzcNqaMmI8vZPC8biPuPHG2ewaEJemvAe27eprmJTg14maHP2TC%2Bm9p6f4loGl0focBOVDkJzTG1ck3%2BgxdLCiOPZb7Jzf8riIAybOIAxmk%2Fa5OykDdpfO2oP4UwKdIeiDKm28rN8KRAcuoF0RTW9TUGqZ0RMwDP8I%3D&Expires=1757745518';
 
         loader.load(boxingGloveUrl, (gltf) => {
-            const model = gltf.scene;
-            model.scale.set(0.1, 0.1, 0.1); // Adjust scale as needed
-            model.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
-            
-            // For AI/Online opponent
-            opponentHand1.add(model.clone());
-            opponentHand2.add(model.clone());
+            const baseModel = gltf.scene;
 
-            // For player
-            myFist1.add(model.clone());
-            myFist2.add(model.clone());
+            // This loop ensures all materials in the model will react to scene lighting.
+            baseModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            const scale = 0.05; // New, smaller scale
+
+            // --- Player's Gloves ---
+            const playerLeftGlove = baseModel.clone();
+            playerLeftGlove.scale.set(scale, scale, scale);
+            playerLeftGlove.rotation.set(0, Math.PI / 2, 0); // Rotate to face forward
+            myFist1.add(playerLeftGlove);
+
+            const playerRightGlove = baseModel.clone();
+            // Mirror the glove for the right hand by inverting the X scale
+            playerRightGlove.scale.set(-scale, scale, scale);
+            playerRightGlove.rotation.set(0, Math.PI / 2, 0); // Rotate to face forward
+            myFist2.add(playerRightGlove);
+
+
+            // --- Opponent's Gloves ---
+            const opponentLeftGlove = baseModel.clone();
+            opponentLeftGlove.scale.set(scale, scale, scale);
+            opponentLeftGlove.rotation.set(0, -Math.PI / 2, 0); // Rotate to face player
+            opponentHand1.add(opponentLeftGlove);
+
+            const opponentRightGlove = baseModel.clone();
+            // Mirror the glove for the right hand
+            opponentRightGlove.scale.set(-scale, scale, scale);
+            opponentRightGlove.rotation.set(0, -Math.PI / 2, 0); // Rotate to face player
+            opponentHand2.add(opponentRightGlove);
+
         }, undefined, (error) => {
             console.error('An error happened while loading the model:', error);
         });
