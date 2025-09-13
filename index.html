@@ -229,7 +229,7 @@
 
             const playerRightGlove = baseModel.clone();
             playerRightGlove.scale.set(-scale, scale, scale);
-            playerRightGlove.rotation.set(0, -Math.PI / 2, 0); 
+            playerRightGlove.rotation.set(0, Math.PI / 2, 0); 
             myFist2.add(playerRightGlove);
 
             // --- Opponent's Gloves ---
@@ -240,7 +240,7 @@
 
             const opponentRightGlove = baseModel.clone();
             opponentRightGlove.scale.set(-scale, scale, scale);
-            opponentRightGlove.rotation.set(0, Math.PI / 2, 0);
+            opponentRightGlove.rotation.set(0, -Math.PI / 2, 0);
             opponentHand2.add(opponentRightGlove);
 
         }, undefined, (error) => {
@@ -703,8 +703,22 @@
         function setupConnection(newConn) {
             conn = newConn;
             document.getElementById('status').textContent = `Connected to ${conn.peer}`;
-            resetGame();
+            
+            myHealth = MAX_HEALTH;
+            opponentHealth = MAX_HEALTH;
+            gameOver = false;
+            hitCooldown = 0;
+            updateHealthBars();
+            
             peerEl.style.display = "none";
+            modeSelectEl.style.display = 'none';
+            gameOverEl.style.display = 'none';
+
+            opponentHead.visible = true;
+            opponentHand1.visible = true;
+            opponentHand2.visible = true;
+            opponentHealthBar.visible = true;
+
             if (localStream) {
                 const call = peer.call(conn.peer, localStream);
                 call.on('stream', (remoteStream) => {
@@ -714,6 +728,7 @@
                     document.body.appendChild(audio);
                 });
             }
+
             conn.on("data", (data) => {
                 if (gameOver) return;
                 if (data.type === "hit") {
@@ -742,10 +757,6 @@
             });
             conn.on("close", () => {
                 document.getElementById("status").textContent = "Connection closed.";
-                opponentHead.visible = false;
-                opponentHand1.visible = false;
-                opponentHand2.visible = false;
-                conn = null;
                 resetGame();
             });
         }
