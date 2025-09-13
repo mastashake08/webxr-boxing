@@ -93,6 +93,7 @@
         // --- Constants & Game State ---
         const MAX_HEALTH = 5;
         const MOVE_SPEED = 1.5;
+        const ARENA_BOUNDARY = 4.5;
         let myHealth = MAX_HEALTH;
         let opponentHealth = MAX_HEALTH;
         let gameOver = false;
@@ -221,7 +222,6 @@
 
             const scale = 0.05;
 
-            // --- Player's Gloves ---
             const playerLeftGlove = baseModel.clone();
             playerLeftGlove.scale.set(scale, scale, scale);
             myFist1.add(playerLeftGlove);
@@ -229,8 +229,7 @@
             const playerRightGlove = baseModel.clone();
             playerRightGlove.scale.set(-scale, scale, scale);
             myFist2.add(playerRightGlove);
-
-            // --- Opponent's Gloves ---
+ 
             const opponentLeftGlove = baseModel.clone();
             opponentLeftGlove.scale.set(scale, scale, scale);
             opponentHand1.add(opponentLeftGlove);
@@ -429,6 +428,8 @@
 
         const playerDirection = new THREE.Vector3();
         function handlePlayerMovement(delta) {
+            const movementVector = new THREE.Vector3();
+
             if (renderer.xr.isPresenting) {
                 const session = renderer.xr.getSession();
                 if (!session) return;
@@ -448,14 +449,23 @@
                 const rightDirection = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), playerDirection).normalize();
                 const forwardMovement = playerDirection.multiplyScalar(-moveZ * MOVE_SPEED * delta);
                 const rightMovement = rightDirection.multiplyScalar(-moveX * MOVE_SPEED * delta);
-                player.position.add(forwardMovement).add(rightMovement);
+                movementVector.add(forwardMovement).add(rightMovement);
             } else if (controls && controls.isLocked) {
                 const speed = MOVE_SPEED * delta;
-                if (keys['KeyW'] || keys['ArrowUp']) player.translateZ(-speed);
-                if (keys['KeyS'] || keys['ArrowDown']) player.translateZ(speed);
-                if (keys['KeyA'] || keys['ArrowLeft']) player.translateX(-speed);
-                if (keys['KeyD'] || keys['ArrowRight']) player.translateX(speed);
+                if (keys['KeyW'] || keys['ArrowUp']) movementVector.z -= speed;
+                if (keys['KeyS'] || keys['ArrowDown']) movementVector.z += speed;
+                if (keys['KeyA'] || keys['ArrowLeft']) movementVector.x -= speed;
+                if (keys['KeyD'] || keys['ArrowRight']) movementVector.x += speed;
+                
+                // Apply movement relative to camera direction
+                const euler = new THREE.Euler(0, camera.rotation.y, 0, 'YXZ');
+                movementVector.applyEuler(euler);
             }
+
+            const nextPos = player.position.clone().add(movementVector);
+            nextPos.x = THREE.MathUtils.clamp(nextPos.x, -ARENA_BOUNDARY, ARENA_BOUNDARY);
+            nextPos.z = THREE.MathUtils.clamp(nextPos.z, -ARENA_BOUNDARY, ARENA_BOUNDARY);
+            player.position.copy(nextPos);
         }
         
         function handlePunchingAnimation(delta) {
@@ -485,7 +495,7 @@
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
         function updateAI(delta) {
             aiStateTimer -= delta;
-            camera.getWorldPosition(playerWorldPos);
+            player.getWorldPosition(playerWorldPos);
             const distanceToPlayer = opponentHead.position.distanceTo(playerWorldPos);
 
             if (aiStateTimer <= 0) {
@@ -561,7 +571,7 @@
             const opponentHands = [opponentHand1Collider, opponentHand2Collider];
             const opponentHandPos = new THREE.Vector3();
             const myFistPos = new THREE.Vector3();
-            camera.getWorldPosition(playerWorldPos);
+            player.getWorldPosition(playerWorldPos);
             for (const oHand of opponentHands) {
                 if (!oHand.parent.visible) continue;
                 oHand.getWorldPosition(opponentHandPos);
@@ -595,7 +605,7 @@
             if (gameOver || hitCooldown > 0) return;
             const myFists = [myFist1, myFist2];
             const fistPos = new THREE.Vector3();
-            camera.getWorldPosition(playerWorldPos);
+            player.getWorldPosition(playerWorldPos);
             trainingSpheres.forEach(sphere => {
                 if (!sphere.userData.active) return;
                 if (sphere.userData.type === 'hit') {
@@ -822,7 +832,7 @@
             }
             
             if(gameMode === 'online' && conn?.open && !gameOver) {
-                camera.getWorldPosition(playerWorldPos);
+                player.getWorldPosition(playerWorldPos);
                 const headData = { position: playerWorldPos.toArray(), quaternion: camera.quaternion.toArray() };
                 const c1WP = new THREE.Vector3(), c2WP = new THREE.Vector3();
                 myFist1.getWorldPosition(c1WP);
