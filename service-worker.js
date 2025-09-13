@@ -9,7 +9,8 @@ const urlsToCache = [
   'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/XRHandModelFactory.js',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  'https://www.svgrepo.com/download/480394/boxing-glove-pictogram.svg'
+  'https://www.svgrepo.com/download/480394/boxing-glove-pictogram.svg',
+  '/models/boxing_glove.glb
 ];
 
 // Install the service worker and cache the static assets
