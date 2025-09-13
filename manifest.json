@@ -1,0 +1,16 @@
+{
+  "name": "WebXR Boxing Game",
+  "short_name": "XR Boxing",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#0891b2",
+  "description": "A peer-to-peer WebXR hand-tracking boxing game.",
+  "icons": [
+    {
+      "src": "https://www.svgrepo.com/download/480394/boxing-glove-pictogram.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
