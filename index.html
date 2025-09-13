@@ -192,8 +192,7 @@
 
 
         const loader = new GLTFLoader();
-        const boxingGloveUrl = 'https://sketchfab-prod-media.s3.amazonaws.com/archives/5b464201104949e09f77f2d1cf8b60c3/glb/6036e444c8f745f794e34e875421d684/boxing_glove.glb?AWSAccessKeyId=ASIAZ4EAQ242FRX75XEL&Signature=fIyrdTr8YxKdUc8YYFo4mSZrCcc%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEMb%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCWV1LXdlc3QtMSJGMEQCIFhi2LRpHoAd0DVY7s9QRd9O9rdjZ05r6y7yMJnkDefzAiAlVutpH5NFvQ28U3WW14ibiaFXp3bIAMxK51M%2Bhe8mXiqyBQg%2FEAAaDDY3ODg3NDM3MTg5MiIMT5MiUgGkpkgS%2BkdwKo8FDRar7TipEwoPXb7YIhuji3w1L4gRgcgPGnrzIN%2FOj48y4M3HaA7qdlds5vLZG3z1aHqL02CSgMfFSxHoIiKCz%2FS%2B%2B6CAR%2Fo5EM6eKS%2BuOahAj%2BSvrDoWPZ23%2BYLBSZxcDVamGVTSPrSlauo4Qroq4hrw6LlPV%2FsEFI180AEDERfG6gFmZE4q98wR%2BMb%2FbRUmej2Fcp%2FDMYoXp62c7jBH6Kp621DdzAjMCUThleiM3PQtvw9pAJfzsXppJEUdp9RRqdwn%2FdqDlE%2FDB15PUduIos8%2BEd6dSy9c%2BGzqJ237DIqaGc8DRWNS1EFhCG%2Fe0yB6yMZiaEbHDYnqtS%2BwlOhf8yd8W8%2FpneNFC2HWRonUT1TZ%2BZxRzyqbnR8bg%2F8XojNrWNYnHbVF31GU4wduCTHT2jVnafo09SSUQXWx689ewDe1n1zb4VjT26NtGhuaxUlxV5p7AJDYDQItMtZndPjtpa1a8ZZbFj921o8Khega8FS%2BhV1VIOfrSnxPtysjoFevm7bMot7AU6SxPn3YE9eoQhc9PryB1rE7yXhFPFzSkBhpn8mQTike1KLPwHYK7%2Fx5evHgHopf8D8qM4pXWezFcSppZ1STa1bZKQqji8GktE0zSqGN3G6Hvb3Fg%2FsP5JsY3NqGLFTIjHvyLTslF1dsMqdRnU9dfMGTX3L7KRs%2FWLa%2FBt50yX%2B9Q9aCFha1w6aJjbTOpIElQgqzfOzaXICcioYy86QpD%2BVPe4rrHwtcRgXwNxHNH0aybQ4SgfUoyLDRBeuIQSeKl6HvkkE37touiSdtjj6ik2YOAlcrbMKLIVHeCMmZ5vUn2YBWbULKVa08twkgVKMghKqwyn4n4QmcjV7S46fEIZ5R2i%2FsoGF9CzCeipTGBjqyAQUtE00sV5dRTJ0L2yeLSDZR6nILq1WsyL4t2Orxa04%2Bo2KL8zC3jeJl5mbkTBDZIWZXkreQfiNGpIzcNqaMmI8vZPC8biPuPHG2ewaEJemvAe27eprmJTg14maHP2TC%2Bm9p6f4loGl0focBOVDkJzTG1ck3%2BgxdLCiOPZb7Jzf8riIAybOIAxmk%2Fa5OykDdpfO2oP4UwKdIeiDKm28rN8KRAcuoF0RTW9TUGqZ0RMwDP8I%3D&Expires=1757745518';
-
+        const boxingGloveUrl = '/models/boxing_glove.glb';
         loader.load(boxingGloveUrl, (gltf) => {
             const baseModel = gltf.scene;
             baseModel.traverse((child) => {
@@ -205,24 +204,26 @@
 
             const scale = 0.05;
 
+            // --- Player's Gloves ---
             const playerLeftGlove = baseModel.clone();
             playerLeftGlove.scale.set(scale, scale, scale);
-            playerLeftGlove.rotation.set(0, Math.PI , 0);
+            playerLeftGlove.rotation.set(0, Math.PI / 2, 0);
             myFist1.add(playerLeftGlove);
 
             const playerRightGlove = baseModel.clone();
             playerRightGlove.scale.set(-scale, scale, scale);
-            playerRightGlove.rotation.set(0, -Math.PI , 0); 
+            playerRightGlove.rotation.set(0, Math.PI / 2, 0); 
             myFist2.add(playerRightGlove);
 
+            // --- Opponent's Gloves ---
             const opponentLeftGlove = baseModel.clone();
             opponentLeftGlove.scale.set(scale, scale, scale);
-            opponentLeftGlove.rotation.set(0, -Math.PI , 0);
+            opponentLeftGlove.rotation.set(0, -Math.PI / 2, 0);
             opponentHand1.add(opponentLeftGlove);
 
             const opponentRightGlove = baseModel.clone();
             opponentRightGlove.scale.set(-scale, scale, scale);
-            opponentRightGlove.rotation.set(0, Math.PI , 0);
+            opponentRightGlove.rotation.set(0, -Math.PI / 2, 0);
             opponentHand2.add(opponentRightGlove);
 
         }, undefined, (error) => {
@@ -259,23 +260,104 @@
         }
 
         // --- Effects ---
-        function Effect(color, size) { /* ... */ }
-        Effect.prototype.activate = function(position) { /* ... */ };
-        Effect.prototype.update = function(delta) { /* ... */ };
+        function Effect(color, size) {
+            this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
+            this.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true });
+            this.mesh = new THREE.Mesh(this.geometry, this.material);
+            this.mesh.visible = false;
+            this.life = 0;
+        }
+        Effect.prototype.activate = function(position) {
+            this.mesh.position.copy(position);
+            this.mesh.visible = true;
+            this.mesh.scale.set(1, 1, 1);
+            this.material.opacity = 1;
+            this.life = 1;
+        };
+        Effect.prototype.update = function(delta) {
+            if (this.life > 0) {
+                this.life -= delta * 2;
+                this.material.opacity = this.life;
+                this.mesh.scale.multiplyScalar(1 + delta * 5);
+                if (this.life <= 0) this.mesh.visible = false;
+            }
+        };
         const hitEffects = Array.from({length: 5}, () => new Effect(0xffff00, 0.05));
         const blockEffects = Array.from({length: 5}, () => new Effect(0x00ffff, 0.03));
         hitEffects.forEach(e => scene.add(e.mesh));
         blockEffects.forEach(e => scene.add(e.mesh));
         let currentHitEffect = 0, currentBlockEffect = 0;
-        function triggerEffect(pool, index, position) { /* ... */ }
+        function triggerEffect(pool, index, position) {
+            pool[index].activate(position);
+            return (index + 1) % pool.length;
+        }
 
         // --- Training Mode ---
         const trainingSpheres = [];
         let trainingSpawnTimer = 0;
-        function initializeTrainingSpheres() { /* ... */ }
+        function initializeTrainingSpheres() {
+            const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            for (let i=0; i<10; i++) {
+                const sphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial());
+                sphere.visible = false;
+                sphere.userData = {
+                    active: false,
+                    type: 'hit', // 'hit' or 'dodge'
+                    velocity: new THREE.Vector3(),
+                    lifetime: 0
+                };
+                trainingSpheres.push(sphere);
+                scene.add(sphere);
+            }
+        }
         initializeTrainingSpheres();
-        function spawnSphere() { /* ... */ }
-        function updateTrainingMode(delta) { /* ... */ }
+        function spawnSphere() {
+            let sphere = trainingSpheres.find(s => !s.userData.active);
+            if (!sphere) return;
+
+            sphere.userData.active = true;
+            sphere.userData.lifetime = 5; // 5 seconds to live
+            sphere.visible = true;
+
+            const spawnAngle = Math.random() * Math.PI * 2;
+            const spawnRadius = 5;
+            sphere.position.set(
+                player.position.x + Math.cos(spawnAngle) * spawnRadius,
+                1 + Math.random(),
+                player.position.z + Math.sin(spawnAngle) * spawnRadius
+            );
+
+            if (Math.random() > 0.5) {
+                sphere.userData.type = 'hit';
+                sphere.material.color.setHex(0x00ff00);
+                sphere.material.emissive.setHex(0x00ff00);
+            } else {
+                sphere.userData.type = 'dodge';
+                sphere.material.color.setHex(0xff0000);
+                sphere.material.emissive.setHex(0xff0000);
+            }
+
+            camera.getWorldPosition(playerWorldPos);
+            sphere.userData.velocity.subVectors(playerWorldPos, sphere.position).normalize().multiplyScalar(2.5);
+        }
+        function updateTrainingMode(delta) {
+            trainingSpawnTimer -= delta;
+            if (trainingSpawnTimer <= 0) {
+                spawnSphere();
+                trainingSpawnTimer = Math.random() * 2 + 1; // Spawn every 1-3 seconds
+            }
+
+            trainingSpheres.forEach(sphere => {
+                if (sphere.userData.active) {
+                    sphere.position.add(sphere.userData.velocity.clone().multiplyScalar(delta));
+                    sphere.userData.lifetime -= delta;
+                    if (sphere.userData.lifetime <= 0) {
+                        sphere.userData.active = false;
+                        sphere.visible = false;
+                    }
+                }
+            });
+        }
         
         // --- UI & Game Mode Logic ---
         const modeSelectEl = document.getElementById('mode-select-ui');
@@ -308,22 +390,217 @@
         document.getElementById('play-online-btn').addEventListener('click', () => startGameAndEnterVR('online'));
         document.getElementById('play-ai-btn').addEventListener('click', () => startGameAndEnterVR('ai'));
         document.getElementById('play-training-btn').addEventListener('click', () => startGameAndEnterVR('training'));
-        document.getElementById('play-again-btn').addEventListener('click', () => { /* ... */ });
+        document.getElementById('play-again-btn').addEventListener('click', () => {
+             if(gameMode === 'online' && conn?.open) conn.send({type:'reset'}); 
+            resetGame();
+        });
         
         // --- Player Movement ---
         const playerDirection = new THREE.Vector3();
-        function handlePlayerMovement(delta) { /* ... */ }
+        function handlePlayerMovement(delta) {
+            const session = renderer.xr.getSession();
+            if (!session) return;
+
+            let moveZ = 0;
+            let moveX = 0;
+
+            for (const source of session.inputSources) {
+                if (source.gamepad && source.gamepad.axes.length >= 4) {
+                    const joystickX = source.gamepad.axes[2];
+                    const joystickY = source.gamepad.axes[3];
+                    
+                    if (Math.abs(joystickX) > 0.1) moveX = joystickX;
+                    if (Math.abs(joystickY) > 0.1) moveZ = joystickY;
+                }
+            }
+
+            if (moveX === 0 && moveZ === 0) return;
+
+            camera.getWorldDirection(playerDirection);
+            playerDirection.y = 0;
+            playerDirection.normalize();
+
+            const rightDirection = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), playerDirection).normalize();
+
+            const forwardMovement = playerDirection.multiplyScalar(-moveZ * MOVE_SPEED * delta);
+            const rightMovement = rightDirection.multiplyScalar(-moveX * MOVE_SPEED * delta);
+
+            player.position.add(forwardMovement).add(rightMovement);
+        }
         
         // --- AI Logic ---
         let aiState = 'IDLE', aiStateTimer = 0;
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
         const playerWorldPos = new THREE.Vector3();
-        function updateAI(delta) { /* ... */ }
+        function updateAI(delta) {
+            aiStateTimer -= delta;
+            camera.getWorldPosition(playerWorldPos);
+            const distanceToPlayer = opponentHead.position.distanceTo(playerWorldPos);
+
+            if (aiStateTimer <= 0) {
+                const rand = Math.random();
+                if (distanceToPlayer < 1.5) {
+                    if (rand < 0.5) { aiState = 'ATTACKING'; aiStateTimer = Math.random() * 0.5 + 0.2; }
+                    else if (rand < 0.8) { aiState = 'BLOCKING'; aiStateTimer = Math.random() * 1 + 0.5; }
+                    else { aiState = 'DODGING'; aiStateTimer = Math.random() * 0.5 + 0.3; }
+                } else {
+                    aiState = 'IDLE';
+                }
+            }
+
+            aiTargetPos.lerp(new THREE.Vector3(playerWorldPos.x, playerWorldPos.y, playerWorldPos.z - 0.7), delta * 2);
+            opponentHead.position.lerp(aiTargetPos, delta * 5);
+            
+            const blockPos = opponentHead.position.clone();
+            const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
+            switch(aiState) {
+                case 'ATTACKING':
+                    attackHand.position.lerp(playerWorldPos, delta * 10);
+                    break;
+                case 'BLOCKING':
+                    opponentHand1.position.lerp(blockPos.clone().add(new THREE.Vector3(-0.2, 0.1, -0.2)), delta * 8);
+                    opponentHand2.position.lerp(blockPos.clone().add(new THREE.Vector3(0.2, 0.1, -0.2)), delta * 8);
+                    break;
+                case 'DODGING':
+                    opponentHead.position.x += Math.sin(clock.getElapsedTime() * 20) * delta * 2;
+                    break;
+                default: // IDLE
+                    opponentHand1.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(-0.3, -0.2, 0)), delta * 5);
+                    opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(0.3, -0.2, 0)), delta * 5);
+                    break;
+            }
+            checkAIHits();
+        }
 
         // --- Collision Detection ---
-        function checkCollisions() { /* ... */ }
-        function checkAIHits() { /* ... */ }
-        function checkTrainingCollisions() { /* ... */ }
+        function checkCollisions() {
+            if (!opponentHead.visible || gameOver || hitCooldown > 0) return;
+
+            const myFists = [myFist1, myFist2];
+            const opponentHands = [opponentHand1Collider, opponentHand2Collider];
+            const fistPos = new THREE.Vector3();
+            const opponentHandPos = new THREE.Vector3();
+            const opponentHeadPos = new THREE.Vector3();
+            opponentHeadCollider.getWorldPosition(opponentHeadPos);
+
+            for (const fist of myFists) {
+                fist.getWorldPosition(fistPos);
+                let wasBlocked = false;
+
+                for (const oHand of opponentHands) {
+                    if (oHand.parent.visible) {
+                        oHand.getWorldPosition(opponentHandPos);
+                        if (fistPos.distanceTo(opponentHandPos) < 0.15) { // Using collider radius
+                            currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, fistPos);
+                            wasBlocked = true;
+                            break;
+                        }
+                    }
+                }
+                if (wasBlocked) continue;
+
+                if (fistPos.distanceTo(opponentHeadPos) < 0.2) { // Using collider size
+                    hitCooldown = 1.0;
+                    currentHitEffect = triggerEffect(hitEffects, currentHitEffect, fistPos);
+                    playHitSound();
+                    opponentHealth--;
+                    updateHealthBars();
+                    if (gameMode === 'online' && conn?.open) {
+                        conn.send({ type: 'hit' });
+                    }
+                    if (opponentHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU WIN!";
+                        gameOverEl.style.display = 'block';
+                        restartMsgEl.style.display = gameMode === 'ai' ? 'block' : 'none';
+                        if (gameMode === 'online' && conn?.open) {
+                            conn.send({ type: 'lose' });
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        function checkAIHits() {
+            if (gameMode !== 'ai' || !opponentHead.visible || gameOver || hitCooldown > 0) return;
+
+            const myFists = [myFist1, myFist2];
+            const opponentHands = [opponentHand1Collider, opponentHand2Collider];
+            const opponentHandPos = new THREE.Vector3();
+            const myFistPos = new THREE.Vector3();
+            camera.getWorldPosition(playerWorldPos);
+
+            for (const oHand of opponentHands) {
+                if (!oHand.parent.visible) continue;
+                oHand.getWorldPosition(opponentHandPos);
+                let wasBlocked = false;
+                
+                for (const myFist of myFists) {
+                    myFist.getWorldPosition(myFistPos);
+                    if (opponentHandPos.distanceTo(myFistPos) < 0.15) {
+                        currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, opponentHandPos);
+                        wasBlocked = true;
+                        break;
+                    }
+                }
+                if (wasBlocked) continue;
+                
+                if (opponentHandPos.distanceTo(playerWorldPos) < 0.25) {
+                    hitCooldown = 1.0;
+                    currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
+                    playHitSound();
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU LOSE";
+                        gameOverEl.style.display = 'block';
+                        restartMsgEl.style.display = 'block';
+                    }
+                    return;
+                }
+            }
+        }
+        function checkTrainingCollisions() {
+            if (gameOver || hitCooldown > 0) return;
+            const myFists = [myFist1, myFist2];
+            const fistPos = new THREE.Vector3();
+            camera.getWorldPosition(playerWorldPos);
+
+            trainingSpheres.forEach(sphere => {
+                if (!sphere.userData.active) return;
+                
+                if (sphere.userData.type === 'hit') {
+                    for (const fist of myFists) {
+                        fist.getWorldPosition(fistPos);
+                        if (fistPos.distanceTo(sphere.position) < 0.2) {
+                            currentHitEffect = triggerEffect(hitEffects, currentHitEffect, sphere.position);
+                            playHitSound();
+                            sphere.userData.active = false;
+                            sphere.visible = false;
+                            return; 
+                        }
+                    }
+                } else { // dodge type
+                    if (playerWorldPos.distanceTo(sphere.position) < 0.3) {
+                        hitCooldown = 1.0;
+                        currentHitEffect = triggerEffect(hitEffects, currentHitEffect, playerWorldPos);
+                        playHitSound();
+                        myHealth--;
+                        updateHealthBars();
+                        sphere.userData.active = false;
+                        sphere.visible = false;
+                        if (myHealth <= 0) {
+                            gameOver = true;
+                            document.getElementById('game-over-text').textContent = "TRAINING FAILED";
+                            gameOverEl.style.display = 'block';
+                            restartMsgEl.style.display = 'none';
+                        }
+                    }
+                }
+            });
+        }
+
 
         // --- Game Flow ---
         function resetGame() {
@@ -335,7 +612,9 @@
             peerEl.style.display = 'none';
             modeSelectEl.style.display = 'block';
             restartMsgEl.style.display = 'none';
+
             trainingSpheres.forEach(s => { s.userData.active = false; s.visible = false; });
+            
             player.position.set(0, 0, 2);
             opponentHead.visible = false;
             opponentHand1.visible = false;
@@ -367,7 +646,6 @@
                 localStream.getAudioTracks()[0].enabled = micEnabled; // Start muted
             } catch (err) {
                 console.error("Could not get microphone access:", err);
-                // Fallback to no-voice connection
             }
             initializePeer();
         }
@@ -380,7 +658,7 @@
             peer.on('error', (err) => { document.getElementById('status').textContent = `Error: ${err.type}`; });
 
             peer.on('call', (call) => {
-                call.answer(localStream); // Answer the call with our stream
+                call.answer(localStream); 
                 call.on('stream', (remoteStream) => {
                     const audio = document.createElement('audio');
                     audio.srcObject = remoteStream;
@@ -414,8 +692,40 @@
                 });
             }
 
-            conn.on("data", (data) => { /* ... */ });
-            conn.on("close", () => { /* ... */ });
+            conn.on("data", (data) => {
+                if (gameOver) return;
+                if (data.type === "hit") {
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById("game-over-text").textContent = "YOU LOSE";
+                        gameOverEl.style.display = "block";
+                        conn?.open && conn.send({ type: "lose" });
+                    }
+                } else if (data.type === "lose") {
+                    gameOver = true;
+                    document.getElementById("game-over-text").textContent = "YOU WIN!";
+                    gameOverEl.style.display = "block";
+                } else if (data.type === "reset") {
+                    resetGame();
+                } else if (data.player) {
+                    opponentHead.position.fromArray(data.player.head.position);
+                    opponentHead.quaternion.fromArray(data.player.head.quaternion);
+                    opponentHand1.position.fromArray(data.player.controllers[0].position);
+                    opponentHand1.quaternion.fromArray(data.player.controllers[0].quaternion);
+                    opponentHand2.position.fromArray(data.player.controllers[1].position);
+                    opponentHand2.quaternion.fromArray(data.player.controllers[1].quaternion);
+                }
+            });
+            conn.on("close", () => {
+                document.getElementById("status").textContent = "Connection closed.";
+                opponentHead.visible = false;
+                opponentHand1.visible = false;
+                opponentHand2.visible = false;
+                conn = null;
+                resetGame();
+            });
         }
         
         // --- Controller Input & Animation Loop ---
@@ -425,7 +735,29 @@
             handleMicToggle();
         }
 
-        function handleAButtonRestart() { /* ... */ }
+        function handleAButtonRestart() {
+            if (!gameOver || gameMode !== 'ai') {
+                aButtonPressedLastFrame = false;
+                return;
+            }
+
+            const session = renderer.xr.getSession();
+            if (!session) return;
+            
+            let aButtonPressed = false;
+            for (const source of session.inputSources) {
+                // Oculus Quest A button is typically index 4 on the 'xr-standard-thumbstick' gamepad
+                if (source.gamepad && source.gamepad.buttons.length > 4 && source.gamepad.buttons[4].pressed) {
+                    aButtonPressed = true;
+                    break;
+                }
+            }
+
+            if (aButtonPressed && !aButtonPressedLastFrame) {
+                resetGame();
+            }
+            aButtonPressedLastFrame = aButtonPressed;
+        }
         function handleMicToggle() {
             if (gameMode !== 'online' || !localStream) {
                 bButtonPressedLastFrame = false;
@@ -468,7 +800,18 @@
                 }
             }
             
-            if(gameMode === 'online' && conn?.open && !gameOver) { /* ... */ }
+            if(gameMode === 'online' && conn?.open && !gameOver) {
+                camera.getWorldPosition(playerWorldPos);
+                const headData = { position: playerWorldPos.toArray(), quaternion: camera.quaternion.toArray() };
+                const c1WP = new THREE.Vector3(), c2WP = new THREE.Vector3();
+                controller1.getWorldPosition(c1WP);
+                controller2.getWorldPosition(c2WP);
+                const c1WQ = new THREE.Quaternion(), c2WQ = new THREE.Quaternion();
+                controller1.getWorldQuaternion(c1WQ);
+                controller2.getWorldQuaternion(c2WQ);
+                const data = { player: { head: headData, controllers: [ { position: c1WP.toArray(), quaternion: c1WQ.toArray() }, { position: c2WP.toArray(), quaternion: c2WQ.toArray() } ] } };
+                conn.send(data);
+            }
 
             hitEffects.forEach(e => e.update(delta));
             blockEffects.forEach(e => e.update(delta));
@@ -477,11 +820,12 @@
         });
 
         // --- Window Resizing ---
-        window.addEventListener('resize', () => { /* ... */ });
-        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { /* ... */ }); }
-
-        // --- Mock functions for brevity in this view ---
-        Effect.prototype.activate=function(p){this.mesh.position.copy(p);this.mesh.visible=!0;this.mesh.scale.set(1,1,1);this.material.opacity=1;this.life=1};Effect.prototype.update=function(d){if(this.life>0){this.life-=2*d;this.material.opacity=this.life;this.mesh.scale.multiplyScalar(1+5*d);this.life<=0&&(this.mesh.visible=!1)}};triggerEffect=function(p,i,pos){p[i].activate(pos);return(i+1)%p.length};initializeTrainingSpheres=function(){const g=new THREE.SphereGeometry(.1,16,16);for(let i=0;i<10;i++){const s=new THREE.Mesh(g,new THREE.MeshStandardMaterial);s.visible=!1;s.userData={active:!1,type:"hit",velocity:new THREE.Vector3,lifetime:0};trainingSpheres.push(s);scene.add(s)}};spawnSphere=function(){let s=trainingSpheres.find(s=>!s.userData.active);if(!s)return;s.userData.active=!0;s.userData.lifetime=5;s.visible=!0;const a=2*Math.random()*Math.PI,r=5;s.position.set(player.position.x+Math.cos(a)*r,1+Math.random(),player.position.z+Math.sin(a)*r);.5<Math.random()?(s.userData.type="hit",s.material.color.setHex(0xff00),s.material.emissive.setHex(0xff00)):(s.userData.type="dodge",s.material.color.setHex(16711680),s.material.emissive.setHex(16711680));camera.getWorldPosition(playerWorldPos);s.userData.velocity.subVectors(playerWorldPos,s.position).normalize().multiplyScalar(2.5)};updateTrainingMode=function(d){trainingSpawnTimer-=d;trainingSpawnTimer<=0&&(spawnSphere(),trainingSpawnTimer=1+2*Math.random());trainingSpheres.forEach(s=>{s.userData.active&&(s.position.add(s.userData.velocity.clone().multiplyScalar(d)),s.userData.lifetime-=d,s.userData.lifetime<=0&&(s.userData.active=!1,s.visible=!1))})};document.getElementById("play-again-btn").addEventListener("click",()=>{"online"===gameMode&&conn?.open&&conn.send({type:"reset"});resetGame()});handlePlayerMovement=function(d){const s=renderer.xr.getSession();if(!s)return;let mZ=0,mX=0;for(const src of s.inputSources)if(src.gamepad&&src.gamepad.axes.length>=4){const jX=src.gamepad.axes[2],jY=src.gamepad.axes[3];Math.abs(jX)>.1&&(mX=jX);Math.abs(jY)>.1&&(mZ=jY)}if(0===mX&&0===mZ)return;camera.getWorldDirection(playerDirection);playerDirection.y=0;playerDirection.normalize();const rD=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),playerDirection).normalize(),fM=playerDirection.multiplyScalar(-mZ*MOVE_SPEED*d),rM=rD.multiplyScalar(-mX*MOVE_SPEED*d);player.position.add(fM).add(rM)};updateAI=function(d){aiStateTimer-=d;camera.getWorldPosition(playerWorldPos);const dTp=opponentHead.position.distanceTo(playerWorldPos);if(aiStateTimer<=0){const r=Math.random();dTp<1.5?r<.5?(aiState="ATTACKING",aiStateTimer=.5*Math.random()+.2):r<.8?(aiState="BLOCKING",aiStateTimer=1*Math.random()+.5):(aiState="DODGING",aiStateTimer=.5*Math.random()+.3):aiState="IDLE"}aiTargetPos.lerp(new THREE.Vector3(playerWorldPos.x,playerWorldPos.y,playerWorldPos.z-.7),2*d);opponentHead.position.lerp(aiTargetPos,5*d);const bP=opponentHead.position.clone(),aH=.5>Math.random()?opponentHand1:opponentHand2;switch(aiState){case"ATTACKING":aH.position.lerp(playerWorldPos,10*d);break;case"BLOCKING":opponentHand1.position.lerp(bP.clone().add(new THREE.Vector3(-.2,.1,-.2)),8*d);opponentHand2.position.lerp(bP.clone().add(new THREE.Vector3(.2,.1,-.2)),8*d);break;case"DODGING":opponentHead.position.x+=Math.sin(clock.getElapsedTime()*20)*d*2;break;default:opponentHand1.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(-.3,-.2,0)),5*d),opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(.3,-.2,0)),5*d)}checkAIHits()};checkCollisions=function(){if(!opponentHead.visible||gameOver||hitCooldown>0)return;const mF=[myFist1,myFist2],oH=[opponentHand1Collider,opponentHand2Collider],fP=new THREE.Vector3,oHP=new THREE.Vector3,oHeP=new THREE.Vector3;opponentHeadCollider.getWorldPosition(oHeP);for(const f of mF){f.getWorldPosition(fP);let wB=!1;for(const o of oH)if(o.parent.visible&&(o.getWorldPosition(oHP),fP.distanceTo(oHP)<.15)){currentBlockEffect=triggerEffect(blockEffects,currentBlockEffect,fP);wB=!0;break}if(!wB&&fP.distanceTo(oHeP)<.2){hitCooldown=1;currentHitEffect=triggerEffect(hitEffects,currentHitEffect,fP);playHitSound();opponentHealth--;updateHealthBars();"online"===gameMode&&conn?.open&&conn.send({type:"hit"});if(opponentHealth<=0){gameOver=!0;document.getElementById("game-over-text").textContent="YOU WIN!";gameOverEl.style.display="block";restartMsgEl.style.display="ai"===gameMode?"block":"none";"online"===gameMode&&conn?.open&&conn.send({type:"lose"})}return}}};checkAIHits=function(){if("ai"!==gameMode||!opponentHead.visible||gameOver||hitCooldown>0)return;const mF=[myFist1,myFist2],oH=[opponentHand1Collider,opponentHand2Collider],oHP=new THREE.Vector3,mFP=new THREE.Vector3;camera.getWorldPosition(playerWorldPos);for(const o of oH){if(!o.parent.visible)continue;o.getWorldPosition(oHP);let wB=!1;for(const m of mF)if(m.getWorldPosition(mFP),oHP.distanceTo(mFP)<.15){currentBlockEffect=triggerEffect(blockEffects,currentBlockEffect,oHP);wB=!0;break}if(!wB&&oHP.distanceTo(playerWorldPos)<.25){hitCooldown=1;currentHitEffect=triggerEffect(hitEffects,currentHitEffect,oHP);playHitSound();myHealth--;updateHealthBars();if(myHealth<=0){gameOver=!0;document.getElementById("game-over-text").textContent="YOU LOSE";gameOverEl.style.display="block";restartMsgEl.style.display="block"}return}}};checkTrainingCollisions=function(){if(gameOver||hitCooldown>0)return;const mF=[myFist1,myFist2],fP=new THREE.Vector3;camera.getWorldPosition(playerWorldPos);trainingSpheres.forEach(s=>{if(!s.userData.active)return;"hit"===s.userData.type?mF.forEach(m=>{m.getWorldPosition(fP);fP.distanceTo(s.position)<.2&&(currentHitEffect=triggerEffect(hitEffects,currentHitEffect,s.position),playHitSound(),s.userData.active=!1,s.visible=!1)}):playerWorldPos.distanceTo(s.position)<.3&&(hitCooldown=1,currentHitEffect=triggerEffect(hitEffects,currentHitEffect,playerWorldPos),playHitSound(),myHealth--,updateHealthBars(),s.userData.active=!1,s.visible=!1,myHealth<=0&&(gameOver=!0,document.getElementById("game-over-text").textContent="TRAINING FAILED",gameOverEl.style.display="block",restartMsgEl.style.display="none"))})};handleAButtonRestart=function(){if(!gameOver||"ai"!==gameMode)return void(aButtonPressedLastFrame=!1);const s=renderer.xr.getSession();if(!s)return;let aBP=!1;for(const src of s.inputSources)if(src.gamepad&&src.gamepad.buttons.length>4&&src.gamepad.buttons[4].pressed){aBP=!0;break}aBP&&!aButtonPressedLastFrame&&resetGame();aButtonPressedLastFrame=aBP};if(gameMode==='online'&&conn?.open&&!gameOver){camera.getWorldPosition(playerWorldPos);const hD={position:playerWorldPos.toArray(),quaternion:camera.quaternion.toArray()},c1WP=new THREE.Vector3,c2WP=new THREE.Vector3;controller1.getWorldPosition(c1WP);controller2.getWorldPosition(c2WP);const c1WQ=new THREE.Quaternion,c2WQ=new THREE.Quaternion;controller1.getWorldQuaternion(c1WQ);controller2.getWorldQuaternion(c2WQ);const d={player:{head:hD,controllers:[{position:c1WP.toArray(),quaternion:c1WQ.toArray()},{position:c2WP.toArray(),quaternion:c2WQ.toArray()}]}};conn.send(d)}window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight,camera.updateProjectionMatrix(),renderer.setSize(window.innerWidth,window.innerHeight)});if("serviceWorker"in navigator)window.addEventListener("load",()=>{navigator.serviceWorker.register("/service-worker.js")});
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/service-worker.js'); }); }
         
         resetGame();
     </script>
