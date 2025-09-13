@@ -165,15 +165,37 @@
         controller2.add(myFist2);
         
         // --- Effects ---
-        function Effect(color, size) { /* ... same as before ... */ }
-        Effect.prototype.activate = function(position) { /* ... same as before ... */ };
-        Effect.prototype.update = function(delta) { /* ... same as before ... */ };
+        function Effect(color, size) {
+            this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
+            this.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true });
+            this.mesh = new THREE.Mesh(this.geometry, this.material);
+            this.mesh.visible = false;
+            this.life = 0;
+        }
+        Effect.prototype.activate = function(position) {
+            this.mesh.position.copy(position);
+            this.mesh.visible = true;
+            this.mesh.scale.set(1, 1, 1);
+            this.material.opacity = 1;
+            this.life = 1;
+        };
+        Effect.prototype.update = function(delta) {
+            if (this.life > 0) {
+                this.life -= delta * 2;
+                this.material.opacity = this.life;
+                this.mesh.scale.multiplyScalar(1 + delta * 5);
+                if (this.life <= 0) this.mesh.visible = false;
+            }
+        };
         const hitEffects = Array.from({length: 5}, () => new Effect(0xffff00, 0.05));
         const blockEffects = Array.from({length: 5}, () => new Effect(0x00ffff, 0.03));
         hitEffects.forEach(e => scene.add(e.mesh));
         blockEffects.forEach(e => scene.add(e.mesh));
         let currentHitEffect = 0, currentBlockEffect = 0;
-        function triggerEffect(pool, index, position) { /* ... same as before ... */ }
+        function triggerEffect(pool, index, position) {
+            pool[index].activate(position);
+            return (index + 1) % pool.length;
+        }
 
         // --- UI & Game Mode Logic ---
         const modeSelectUI = document.getElementById('mode-select-ui');
@@ -202,7 +224,45 @@
         let aiStateTimer = 0;
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
 
-        function updateAI(delta) { /* ... same as before ... */ }
+        function updateAI(delta) {
+            aiStateTimer -= delta;
+            const playerPos = renderer.xr.getCamera().position;
+            const distanceToPlayer = opponentHead.position.distanceTo(playerPos);
+
+            if (aiStateTimer <= 0) {
+                const rand = Math.random();
+                if (distanceToPlayer < 1.5) {
+                    if (rand < 0.5) { aiState = 'ATTACKING'; aiStateTimer = Math.random() * 0.5 + 0.2; }
+                    else if (rand < 0.8) { aiState = 'BLOCKING'; aiStateTimer = Math.random() * 1 + 0.5; }
+                    else { aiState = 'DODGING'; aiStateTimer = Math.random() * 0.5 + 0.3; }
+                } else {
+                    aiState = 'IDLE';
+                }
+            }
+
+            aiTargetPos.lerp(new THREE.Vector3(playerPos.x, 1.5, playerPos.z - 0.7), delta * 2);
+            opponentHead.position.lerp(aiTargetPos, delta * 5);
+            
+            const blockPos = opponentHead.position.clone();
+            const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
+            switch(aiState) {
+                case 'ATTACKING':
+                    attackHand.position.lerp(playerPos, delta * 10);
+                    break;
+                case 'BLOCKING':
+                    opponentHand1.position.lerp(blockPos.clone().add(new THREE.Vector3(-0.2, 0.1, -0.2)), delta * 8);
+                    opponentHand2.position.lerp(blockPos.clone().add(new THREE.Vector3(0.2, 0.1, -0.2)), delta * 8);
+                    break;
+                case 'DODGING':
+                    opponentHead.position.x += Math.sin(clock.getElapsedTime() * 20) * delta * 2;
+                    break;
+                default: // IDLE
+                    opponentHand1.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(-0.3, -0.2, 0)), delta * 5);
+                    opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(0.3, -0.2, 0)), delta * 5);
+                    break;
+            }
+            checkAIHits();
+        }
 
         // --- Collision Detection ---
         function checkCollisions() { // Player hits opponent
@@ -307,9 +367,23 @@
         
         // --- PeerJS Logic ---
         let peer, conn;
-        function generateRandomId() { /* ... same as before ... */ }
-        function initializePeer() { /* ... same as before ... */ }
-        document.getElementById('connect-btn').addEventListener('click', () => { /* ... same as before ... */ });
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        function initializePeer() {
+            const myId = generateRandomId();
+            document.getElementById('my-id').textContent = myId;
+            peer = new Peer(myId);
+            peer.on('connection', setupConnection);
+            peer.on('error', (err) => { document.getElementById('status').textContent = `Error: ${err.type}`; });
+        }
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const peerId = document.getElementById('peer-id-input').value.trim();
+            if (!peerId) { document.getElementById('status').textContent = 'Please enter a friend\'s ID.'; return; }
+            if (conn) conn.close();
+            document.getElementById('status').textContent = `Connecting to ${peerId}...`;
+            setupConnection(peer.connect(peerId));
+        });
 
         function setupConnection(newConn) {
             conn = newConn;
@@ -347,7 +421,13 @@
                 }
             });
 
-            conn.on('close', () => { /* ... same as before ... */ });
+            conn.on('close', () => {
+                document.getElementById('status').textContent = 'Connection closed.';
+                opponentHead.visible = false;
+                opponentHand1.visible = false;
+                opponentHand2.visible = false;
+                conn = null;
+            });
         }
         
         // --- Animation Loop ---
@@ -376,11 +456,12 @@
         });
 
         // --- Other stuff ---
-        window.addEventListener('resize', () => { /* ... same as before ... */ });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
         if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/service-worker.js'); }); }
-
-        // --- Mock functions for brevity in this view ---
-        Effect.prototype.activate = function(p){this.mesh.position.copy(p);this.mesh.visible=!0;this.life=1};Effect.prototype.update=function(d){if(this.life>0){this.life-=2*d;this.material.opacity=this.life;this.mesh.scale.multiplyScalar(1+5*d);this.life<=0&&(this.mesh.visible=!1)}};triggerEffect=function(p,i,pos){p[i].activate(pos);return(i+1)%p.length};function updateAI(d){aiStateTimer-=d;const p=renderer.xr.getCamera().position,dist=opponentHead.position.distanceTo(p);if(aiStateTimer<=0){const r=Math.random();dist<1.5?r<0.5?(aiState="ATTACKING",aiStateTimer=0.5*Math.random()+0.2):r<0.8?(aiState="BLOCKING",aiStateTimer=1*Math.random()+0.5):(aiState="DODGING",aiStateTimer=0.5*Math.random()+0.3):aiState="IDLE"}aiTargetPos.lerp(new THREE.Vector3(p.x,1.5,p.z-0.7),2*d);opponentHead.position.lerp(aiTargetPos,5*d);const b=opponentHead.position.clone(),a=Math.random()<0.5?opponentHand1:opponentHand2;switch(aiState){case"ATTACKING":a.position.lerp(p,10*d);break;case"BLOCKING":opponentHand1.position.lerp(b.clone().add(new THREE.Vector3(-0.2,0.1,-0.2)),8*d);opponentHand2.position.lerp(b.clone().add(new THREE.Vector3(0.2,0.1,-0.2)),8*d);break;case"DODGING":opponentHead.position.x+=Math.sin(clock.getElapsedTime()*20)*d*2;break;default:opponentHand1.position.lerp(b.clone().add(new THREE.Vector3(-0.3,-0.2,0)),5*d),opponentHand2.position.lerp(b.clone().add(new THREE.Vector3(0.3,-0.2,0)),5*d)}checkAIHits()}generateRandomId=function(){return Math.random().toString(36).substring(2,8).toUpperCase()};function initializePeer(){const id=generateRandomId();document.getElementById("my-id").textContent=id;peer=new Peer(id);peer.on("connection",setupConnection);peer.on("error",e=>{document.getElementById("status").textContent=`Error: ${e.type}`})}document.getElementById("connect-btn").addEventListener("click",()=>{const id=document.getElementById("peer-id-input").value.trim();if(id){if(conn)conn.close();document.getElementById("status").textContent=`Connecting to ${id}...`;setupConnection(peer.connect(id))}else document.getElementById("status").textContent="Please enter a friend's ID."});conn.on("close",()=>{document.getElementById("status").textContent="Connection closed.";opponentHead.visible=!1;opponentHand1.visible=!1;opponentHand2.visible=!1;conn=null});window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight)});
     </script>
 </body>
 </html>
