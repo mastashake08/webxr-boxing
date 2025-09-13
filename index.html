@@ -103,7 +103,6 @@
         const container = document.getElementById('container');
         const clock = new THREE.Clock();
         const scene = new THREE.Scene();
-        const cssScene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 2);
@@ -132,6 +131,17 @@
 
         // --- Health Bars (In-VR) ---
         const healthBarGroup = new THREE.Group();
+        
+        function createHealthBar(color) {
+            const group = new THREE.Group();
+            for (let i = 0; i < MAX_HEALTH; i++) {
+                const segment = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.01), new THREE.MeshStandardMaterial({ color }));
+                segment.position.x = (i - (MAX_HEALTH - 1) / 2) * 0.05;
+                group.add(segment);
+            }
+            return group;
+        }
+        
         const myHealthBar = createHealthBar(0x00ff00);
         myHealthBar.position.set(-0.3, -0.3, -1);
         const opponentHealthBar = createHealthBar(0xff0000);
@@ -141,8 +151,10 @@
         camera.add(healthBarGroup);
         scene.add(camera);
 
-        function createHealthBar(color) { /* ... same as before ... */ }
-        function updateHealthBars() { /* ... same as before ... */ }
+        function updateHealthBars() {
+            myHealthBar.children.forEach((s, i) => s.visible = i < myHealth);
+            opponentHealthBar.children.forEach((s, i) => s.visible = i < opponentHealth);
+        }
 
         // --- 3D UI ---
         const uiGroup = new THREE.Group();
@@ -188,15 +200,37 @@
         controller2.add(myFist2);
         
         // --- Effects ---
-        function Effect(color, size) { /* ... same as before ... */ }
-        Effect.prototype.activate = function(position) { /* ... same as before ... */ };
-        Effect.prototype.update = function(delta) { /* ... same as before ... */ };
+        function Effect(color, size) {
+            this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
+            this.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true });
+            this.mesh = new THREE.Mesh(this.geometry, this.material);
+            this.mesh.visible = false;
+            this.life = 0;
+        }
+        Effect.prototype.activate = function(position) {
+            this.mesh.position.copy(position);
+            this.mesh.visible = true;
+            this.mesh.scale.set(1, 1, 1);
+            this.material.opacity = 1;
+            this.life = 1;
+        };
+        Effect.prototype.update = function(delta) {
+            if (this.life > 0) {
+                this.life -= delta * 2;
+                this.material.opacity = this.life;
+                this.mesh.scale.multiplyScalar(1 + delta * 5);
+                if (this.life <= 0) this.mesh.visible = false;
+            }
+        };
         const hitEffects = Array.from({length: 5}, () => new Effect(0xffff00, 0.05));
         const blockEffects = Array.from({length: 5}, () => new Effect(0x00ffff, 0.03));
         hitEffects.forEach(e => scene.add(e.mesh));
         blockEffects.forEach(e => scene.add(e.mesh));
         let currentHitEffect = 0, currentBlockEffect = 0;
-        function triggerEffect(pool, index, position) { /* ... same as before ... */ }
+        function triggerEffect(pool, index, position) {
+            pool[index].activate(position);
+            return (index + 1) % pool.length;
+        }
 
         // --- UI & Game Mode Logic ---
         document.getElementById('play-online-btn').addEventListener('click', () => {
@@ -222,11 +256,131 @@
         let aiState = 'IDLE';
         let aiStateTimer = 0;
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
-        function updateAI(delta) { /* ... same as before ... */ }
+        function updateAI(delta) {
+            aiStateTimer -= delta;
+            const playerPos = renderer.xr.getCamera().position;
+            const distanceToPlayer = opponentHead.position.distanceTo(playerPos);
+
+            if (aiStateTimer <= 0) {
+                const rand = Math.random();
+                if (distanceToPlayer < 1.5) {
+                    if (rand < 0.5) { aiState = 'ATTACKING'; aiStateTimer = Math.random() * 0.5 + 0.2; }
+                    else if (rand < 0.8) { aiState = 'BLOCKING'; aiStateTimer = Math.random() * 1 + 0.5; }
+                    else { aiState = 'DODGING'; aiStateTimer = Math.random() * 0.5 + 0.3; }
+                } else {
+                    aiState = 'IDLE';
+                }
+            }
+
+            aiTargetPos.lerp(new THREE.Vector3(playerPos.x, 1.5, playerPos.z - 0.7), delta * 2);
+            opponentHead.position.lerp(aiTargetPos, delta * 5);
+            
+            const blockPos = opponentHead.position.clone();
+            const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
+            switch(aiState) {
+                case 'ATTACKING':
+                    attackHand.position.lerp(playerPos, delta * 10);
+                    break;
+                case 'BLOCKING':
+                    opponentHand1.position.lerp(blockPos.clone().add(new THREE.Vector3(-0.2, 0.1, -0.2)), delta * 8);
+                    opponentHand2.position.lerp(blockPos.clone().add(new THREE.Vector3(0.2, 0.1, -0.2)), delta * 8);
+                    break;
+                case 'DODGING':
+                    opponentHead.position.x += Math.sin(clock.getElapsedTime() * 20) * delta * 2;
+                    break;
+                default: // IDLE
+                    opponentHand1.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(-0.3, -0.2, 0)), delta * 5);
+                    opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(0.3, -0.2, 0)), delta * 5);
+                    break;
+            }
+            checkAIHits();
+        }
 
         // --- Collision Detection ---
-        function checkCollisions() { /* ... same as before ... */ }
-        function checkAIHits() { /* ... same as before ... */ }
+        function checkCollisions() {
+            if (!opponentHead.visible || gameOver || hitCooldown > 0) return;
+
+            const myFists = [myFist1, myFist2];
+            const opponentHands = [opponentHand1, opponentHand2];
+            const fistPos = new THREE.Vector3();
+            const opponentHandPos = new THREE.Vector3();
+            const opponentHeadPos = new THREE.Vector3();
+            opponentHead.getWorldPosition(opponentHeadPos);
+
+            for (const fist of myFists) {
+                fist.getWorldPosition(fistPos);
+                let wasBlocked = false;
+
+                for (const oHand of opponentHands) {
+                    if (oHand.visible) {
+                        oHand.getWorldPosition(opponentHandPos);
+                        if (fistPos.distanceTo(opponentHandPos) < 0.15) {
+                            currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, fistPos);
+                            wasBlocked = true;
+                            break;
+                        }
+                    }
+                }
+                if (wasBlocked) continue;
+
+                if (fistPos.distanceTo(opponentHeadPos) < 0.2) {
+                    hitCooldown = 1.0;
+                    currentHitEffect = triggerEffect(hitEffects, currentHitEffect, fistPos);
+                    opponentHealth--;
+                    updateHealthBars();
+                    if (gameMode === 'online' && conn?.open) {
+                        conn.send({ type: 'hit' });
+                    }
+                    if (opponentHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU WIN!";
+                        gameOverObj.visible = true;
+                        if (gameMode === 'online' && conn?.open) {
+                            conn.send({ type: 'lose' });
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        function checkAIHits() {
+            if (gameMode !== 'ai' || !opponentHead.visible || gameOver || hitCooldown > 0) return;
+
+            const myFists = [myFist1, myFist2];
+            const opponentHands = [opponentHand1, opponentHand2];
+            const opponentHandPos = new THREE.Vector3();
+            const myFistPos = new THREE.Vector3();
+            const myHeadPos = renderer.xr.getCamera().position;
+
+            for (const oHand of opponentHands) {
+                if (!oHand.visible) continue;
+                oHand.getWorldPosition(opponentHandPos);
+                let wasBlocked = false;
+                
+                for (const myFist of myFists) {
+                    myFist.getWorldPosition(myFistPos);
+                    if (opponentHandPos.distanceTo(myFistPos) < 0.15) {
+                        currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, opponentHandPos);
+                        wasBlocked = true;
+                        break;
+                    }
+                }
+                if (wasBlocked) continue;
+                
+                if (opponentHandPos.distanceTo(myHeadPos) < 0.25) {
+                    hitCooldown = 1.0;
+                    currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU LOSE";
+                        gameOverObj.visible = true;
+                    }
+                    return;
+                }
+            }
+        }
 
         // --- Game Flow ---
         function resetGame() {
@@ -244,10 +398,67 @@
         
         // --- PeerJS Logic ---
         let peer, conn;
-        function generateRandomId() { /* ... same as before ... */ }
-        function initializePeer() { /* ... same as before ... */ }
-        document.getElementById('connect-btn').addEventListener('click', () => { /* ... same as before ... */ });
-        function setupConnection(newConn) { /* ... same as before ... */ }
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        function initializePeer() {
+            const myId = generateRandomId();
+            document.getElementById('my-id').textContent = myId;
+            peer = new Peer(myId);
+            peer.on('connection', setupConnection);
+            peer.on('error', (err) => { document.getElementById('status').textContent = `Error: ${err.type}`; });
+        }
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const peerId = document.getElementById('peer-id-input').value.trim();
+            if (!peerId) { document.getElementById('status').textContent = 'Please enter a friend\'s ID.'; return; }
+            if (conn) conn.close();
+            document.getElementById('status').textContent = `Connecting to ${peerId}...`;
+            setupConnection(peer.connect(peerId));
+        });
+        function setupConnection(newConn) {
+            conn = newConn;
+            document.getElementById('status').textContent = `Connected to ${conn.peer}`;
+            resetGame();
+
+            conn.on('data', (data) => {
+                if (gameOver) return;
+                if (data.type === 'hit') {
+                    myHealth--;
+                    updateHealthBars();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        document.getElementById('game-over-text').textContent = "YOU LOSE";
+                        gameOverObj.visible = true;
+                        conn?.open && conn.send({ type: 'lose' });
+                    }
+                } else if (data.type === 'lose') {
+                    gameOver = true;
+                    document.getElementById('game-over-text').textContent = "YOU WIN!";
+                    gameOverObj.visible = true;
+                } else if (data.type === 'reset') {
+                    resetGame();
+                } else {
+                    if (data.head) {
+                        opponentHead.position.fromArray(data.head.position);
+                        opponentHead.quaternion.fromArray(data.head.quaternion);
+                    }
+                    if (data.controllers) {
+                        opponentHand1.position.fromArray(data.controllers[0].position);
+                        opponentHand1.quaternion.fromArray(data.controllers[0].quaternion);
+                        opponentHand2.position.fromArray(data.controllers[1].position);
+                        opponentHand2.quaternion.fromArray(data.controllers[1].quaternion);
+                    }
+                }
+            });
+
+            conn.on('close', () => {
+                document.getElementById('status').textContent = 'Connection closed.';
+                opponentHead.visible = false;
+                opponentHand1.visible = false;
+                opponentHand2.visible = false;
+                conn = null;
+            });
+        }
         
         // --- Animation Loop ---
         renderer.setAnimationLoop(() => {
@@ -264,7 +475,17 @@
             }
 
             if(gameMode === 'ai' && !gameOver) updateAI(delta);
-            if(gameMode === 'online' && conn?.open && !gameOver) { /* ... same as before ... */ }
+            if(gameMode === 'online' && conn?.open && !gameOver) {
+                const xrCamera = renderer.xr.getCamera();
+                const data = {
+                    head: { position: xrCamera.position.toArray(), quaternion: xrCamera.quaternion.toArray() },
+                    controllers: [
+                        { position: controller1.position.toArray(), quaternion: controller1.quaternion.toArray() },
+                        { position: controller2.position.toArray(), quaternion: controller2.quaternion.toArray() }
+                    ]
+                };
+                conn.send(data);
+            }
             if (renderer.xr.isPresenting) {
                  checkCollisions();
             }
@@ -283,9 +504,6 @@
             cssRenderer.setSize(window.innerWidth, window.innerHeight);
         });
         if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/service-worker.js'); }); }
-
-        // Mock functions for brevity in this view
-        createHealthBar=function(c){const g=new THREE.Group();for(let i=0;i<MAX_HEALTH;i++){const s=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.02,0.01),new THREE.MeshStandardMaterial({color:c}));s.position.x=(i-(MAX_HEALTH-1)/2)*0.05;g.add(s)}return g};updateHealthBars=function(){myHealthBar.children.forEach((s,i)=>s.visible=i<myHealth);opponentHealthBar.children.forEach((s,i)=>s.visible=i<opponentHealth)};Effect.prototype.activate=function(p){this.mesh.position.copy(p);this.mesh.visible=!0;this.mesh.scale.set(1,1,1);this.material.opacity=1;this.life=1};Effect.prototype.update=function(d){if(this.life>0){this.life-=2*d;this.material.opacity=this.life;this.mesh.scale.multiplyScalar(1+5*d);this.life<=0&&(this.mesh.visible=!1)}};triggerEffect=function(p,i,pos){p[i].activate(pos);return(i+1)%p.length};updateAI=function(d){aiStateTimer-=d;const p=renderer.xr.getCamera().position,dist=opponentHead.position.distanceTo(p);if(aiStateTimer<=0){const r=Math.random();dist<1.5?r<0.5?(aiState="ATTACKING",aiStateTimer=.5*Math.random()+.2):r<.8?(aiState="BLOCKING",aiStateTimer=1*Math.random()+.5):(aiState="DODGING",aiStateTimer=.5*Math.random()+.3):aiState="IDLE"}aiTargetPos.lerp(new THREE.Vector3(p.x,1.5,p.z-.7),2*d);opponentHead.position.lerp(aiTargetPos,5*d);const b=opponentHead.position.clone(),a=.5>Math.random()?opponentHand1:opponentHand2;switch(aiState){case"ATTACKING":a.position.lerp(p,10*d);break;case"BLOCKING":opponentHand1.position.lerp(b.clone().add(new THREE.Vector3(-.2,.1,-.2)),8*d);opponentHand2.position.lerp(b.clone().add(new THREE.Vector3(.2,.1,-.2)),8*d);break;case"DODGING":opponentHead.position.x+=Math.sin(clock.getElapsedTime()*20)*d*2;break;default:opponentHand1.position.lerp(b.clone().add(new THREE.Vector3(-.3,-.2,0)),5*d),opponentHand2.position.lerp(b.clone().add(new THREE.Vector3(.3,-.2,0)),5*d)}checkAIHits()};checkCollisions=function(){if(!opponentHead.visible||gameOver||hitCooldown>0)return;const f=[myFist1,myFist2],o=[opponentHand1,opponentHand2],p=new THREE.Vector3,h=new THREE.Vector3,d=new THREE.Vector3;opponentHead.getWorldPosition(d);for(const i of f){i.getWorldPosition(p);let s=!1;for(const l of o)if(l.visible&&(l.getWorldPosition(h),p.distanceTo(h)<.15)){currentBlockEffect=triggerEffect(blockEffects,currentBlockEffect,p);s=!0;break}if(!s&&p.distanceTo(d)<.2){hitCooldown=1;currentHitEffect=triggerEffect(hitEffects,currentHitEffect,p);opponentHealth--;updateHealthBars();"online"===gameMode&&conn?.open&&conn.send({type:"hit"});if(opponentHealth<=0){gameOver=!0;document.getElementById("game-over-text").textContent="YOU WIN!";gameOverObj.visible = true;"online"===gameMode&&conn?.open&&conn.send({type:"lose"})}return}}};checkAIHits=function(){if("ai"!==gameMode||!opponentHead.visible||gameOver||hitCooldown>0)return;const f=[myFist1,myFist2],o=[opponentHand1,opponentHand2],p=new THREE.Vector3,h=new THREE.Vector3,d=renderer.xr.getCamera().position;for(const i of o){if(!i.visible)continue;i.getWorldPosition(p);let s=!1;for(const l of f)if(l.getWorldPosition(h),p.distanceTo(h)<.15){currentBlockEffect=triggerEffect(blockEffects,currentBlockEffect,p);s=!0;break}if(!s&&p.distanceTo(d)<.25){hitCooldown=1;currentHitEffect=triggerEffect(hitEffects,currentHitEffect,p);myHealth--;updateHealthBars();if(myHealth<=0){gameOver=!0;document.getElementById("game-over-text").textContent="YOU LOSE";gameOverObj.visible = true}return}}};generateRandomId=function(){return Math.random().toString(36).substring(2,8).toUpperCase()};initializePeer=function(){const d=generateRandomId();document.getElementById("my-id").textContent=d;peer=new Peer(d);peer.on("connection",setupConnection);peer.on("error",e=>{document.getElementById("status").textContent=`Error: ${e.type}`})};document.getElementById("connect-btn").addEventListener("click",()=>{const d=document.getElementById("peer-id-input").value.trim();if(d)conn&&conn.close(),document.getElementById("status").textContent=`Connecting to ${d}...`,setupConnection(peer.connect(d));else document.getElementById("status").textContent="Please enter a friend's ID."});setupConnection=function(d){conn=d;document.getElementById("status").textContent=`Connected to ${conn.peer}`;resetGame();conn.on("data",d=>{if(gameOver)return;if("hit"===d.type){myHealth--;updateHealthBars();if(myHealth<=0){gameOver=!0;document.getElementById("game-over-text").textContent="YOU LOSE";gameOverObj.visible = true;conn?.open&&conn.send({type:"lose"})}}"lose"===d.type?(gameOver=!0,document.getElementById("game-over-text").textContent="YOU WIN!",gameOverObj.visible = true):"reset"===d.type?resetGame():(d.head&&(opponentHead.position.fromArray(d.head.position),opponentHead.quaternion.fromArray(d.head.quaternion)),d.controllers&&(opponentHand1.position.fromArray(d.controllers[0].position),opponentHand1.quaternion.fromArray(d.controllers[0].quaternion),opponentHand2.position.fromArray(d.controllers[1].position),opponentHand2.quaternion.fromArray(d.controllers[1].quaternion)))});conn.on("close",()=>{document.getElementById("status").textContent="Connection closed.";opponentHead.visible=!1;opponentHand1.visible=!1;opponentHand2.visible=!1;conn=null})};
     </script>
 </body>
 </html>
