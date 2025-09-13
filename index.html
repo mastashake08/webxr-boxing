@@ -31,6 +31,19 @@
         canvas {
             display: block;
         }
+        #game-over-ui {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(17, 24, 39, 0.9);
+            padding: 2rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(55, 65, 81, 0.5);
+            z-index: 200;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
@@ -58,6 +71,14 @@
         <div id="status" class="mt-3 text-sm text-yellow-400 h-5"></div>
     </div>
 
+    <!-- Game Over Screen -->
+    <div id="game-over-ui">
+        <h2 id="game-over-text" class="text-4xl font-bold text-red-500 mb-4">YOU LOSE</h2>
+        <button id="play-again-btn" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+            Play Again
+        </button>
+    </div>
+
     <!-- Button to Enter XR -->
     <div id="enter-xr-btn-container"></div>
 
@@ -80,8 +101,11 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
-        // --- Constants ---
+        // --- Constants & Game State ---
         const HAND_JOINT_COUNT = 25;
+        const MAX_HEALTH = 5;
+        let myHealth = MAX_HEALTH;
+        let gameOver = false;
 
         // --- Basic Setup ---
         const clock = new THREE.Clock();
@@ -98,7 +122,7 @@
         // --- Scene Content ---
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(10, 10),
-            new THREE.MeshStandardMaterial({ color: 0x444444 })
+            new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.2, roughness: 0.8 })
         );
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
@@ -108,8 +132,27 @@
         directionalLight.position.set(1, 3, 2);
         scene.add(directionalLight);
 
+        // --- Health Bar (In-VR) ---
+        const healthBarGroup = new THREE.Group();
+        const healthSegmentGeometry = new THREE.BoxGeometry(0.04, 0.02, 0.01);
+        const healthOnMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+        const healthOffMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        for (let i = 0; i < MAX_HEALTH; i++) {
+            const segment = new THREE.Mesh(healthSegmentGeometry, healthOnMaterial);
+            segment.position.x = (i - (MAX_HEALTH - 1) / 2) * 0.05;
+            healthBarGroup.add(segment);
+        }
+        healthBarGroup.position.set(0, -0.3, -1);
+        camera.add(healthBarGroup); // Attach to camera
+        scene.add(camera);
+
+        function updateHealthBar() {
+            healthBarGroup.children.forEach((segment, i) => {
+                segment.material = i < myHealth ? healthOnMaterial : healthOffMaterial;
+            });
+        }
+
         // --- Avatars ---
-        // Peer (remote user) avatar
         const peerHead = new THREE.Mesh(
             new THREE.BoxGeometry(0.25, 0.3, 0.2),
             new THREE.MeshStandardMaterial({ color: 0x0099ff })
@@ -118,24 +161,19 @@
         scene.add(peerHead);
 
         const handModelFactory = new XRHandModelFactory();
-
-        // My hands
         const myHand1 = renderer.xr.getHand(0);
         myHand1.add(handModelFactory.createHandModel(myHand1, "mesh"));
         scene.add(myHand1);
-
         const myHand2 = renderer.xr.getHand(1);
         myHand2.add(handModelFactory.createHandModel(myHand2, "mesh"));
         scene.add(myHand2);
 
-        // Peer hands
         const peerHand1 = new THREE.Group();
         const peerHand2 = new THREE.Group();
+        const jointGeometry = new THREE.SphereGeometry(0.015, 8, 8); // Slightly larger for better blocking
+        const jointMaterial = new THREE.MeshStandardMaterial({ color: 0x0099ff });
         for (let i = 0; i < HAND_JOINT_COUNT; i++) {
-            const joint = new THREE.Mesh(
-                new THREE.SphereGeometry(0.01, 8, 8),
-                new THREE.MeshStandardMaterial({ color: 0x0099ff })
-            );
+            const joint = new THREE.Mesh(jointGeometry, jointMaterial);
             peerHand1.add(joint.clone());
             peerHand2.add(joint.clone());
         }
@@ -143,16 +181,15 @@
         peerHand2.visible = false;
         scene.add(peerHand1, peerHand2);
         
-        // --- Hit Animation ---
-        class HitEffect {
-            constructor() {
-                this.geometry = new THREE.TorusGeometry(0.05, 0.01, 8, 24);
-                this.material = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, transparent: true });
+        // --- Hit/Block Animations ---
+        class Effect {
+            constructor(color, size) {
+                this.geometry = new THREE.TorusGeometry(size, 0.01, 8, 24);
+                this.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true });
                 this.mesh = new THREE.Mesh(this.geometry, this.material);
                 this.mesh.visible = false;
                 this.life = 0;
             }
-
             activate(position) {
                 this.mesh.position.copy(position);
                 this.mesh.visible = true;
@@ -160,54 +197,67 @@
                 this.material.opacity = 1;
                 this.life = 1;
             }
-
             update(delta) {
                 if (this.life > 0) {
                     this.life -= delta * 2;
                     this.material.opacity = this.life;
                     this.mesh.scale.multiplyScalar(1 + delta * 5);
-                    if (this.life <= 0) {
-                        this.mesh.visible = false;
-                    }
+                    if (this.life <= 0) this.mesh.visible = false;
                 }
             }
         }
-        const hitEffectPool = [];
-        for(let i=0; i<10; i++) {
-            const effect = new HitEffect();
-            hitEffectPool.push(effect);
-            scene.add(effect.mesh);
-        }
-        let currentEffect = 0;
+        const hitEffects = Array.from({length: 5}, () => new Effect(0xffff00, 0.05));
+        const blockEffects = Array.from({length: 5}, () => new Effect(0x00ffff, 0.03));
+        hitEffects.forEach(e => scene.add(e.mesh));
+        blockEffects.forEach(e => scene.add(e.mesh));
+        let currentHitEffect = 0;
+        let currentBlockEffect = 0;
 
-        function triggerHitEffect(position) {
-            hitEffectPool[currentEffect].activate(position);
-            currentEffect = (currentEffect + 1) % hitEffectPool.length;
+        function triggerEffect(pool, index, position) {
+            pool[index].activate(position);
+            return (index + 1) % pool.length;
         }
 
         // --- Collision Detection ---
         function checkCollisions() {
-            if (!peerHead.visible) return;
+            if (!peerHead.visible || gameOver) return;
 
             const myHands = [myHand1, myHand2];
-            const peerCollidables = [peerHead, ...peerHand1.children, ...peerHand2.children];
-            
-            const myJointWorldPosition = new THREE.Vector3();
-            const peerCollidableWorldPosition = new THREE.Vector3();
+            const peerHands = [peerHand1, peerHand2];
+            const myJointPos = new THREE.Vector3();
+            const peerJointPos = new THREE.Vector3();
+            const peerHeadPos = new THREE.Vector3();
+            peerHead.getWorldPosition(peerHeadPos);
 
             for (const hand of myHands) {
-                if (hand.joints && hand.joints['wrist']) {
-                    for (const joint of Object.values(hand.joints)) {
-                        joint.getWorldPosition(myJointWorldPosition);
-                        for (const collidable of peerCollidables) {
-                            if (collidable.visible) {
-                                collidable.getWorldPosition(peerCollidableWorldPosition);
-                                if (myJointWorldPosition.distanceTo(peerCollidableWorldPosition) < 0.05) {
-                                    triggerHitEffect(myJointWorldPosition);
-                                    return; // Only trigger one hit per frame for performance
+                if (!hand.joints || !hand.joints['wrist']?.visible) continue;
+
+                for (const joint of Object.values(hand.joints)) {
+                    joint.getWorldPosition(myJointPos);
+                    let wasBlocked = false;
+
+                    // 1. Check for blocks
+                    for (const pHand of peerHands) {
+                        if (pHand.visible) {
+                            for (const pJoint of pHand.children) {
+                                pJoint.getWorldPosition(peerJointPos);
+                                if (myJointPos.distanceTo(peerJointPos) < 0.07) {
+                                    currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, myJointPos);
+                                    wasBlocked = true;
+                                    break;
                                 }
                             }
                         }
+                        if (wasBlocked) break;
+                    }
+                    
+                    if (wasBlocked) continue; // If blocked, don't check for head hit with this joint
+
+                    // 2. Check for head hits
+                    if (myJointPos.distanceTo(peerHeadPos) < 0.2) { // 0.2 is radius of head hitbox
+                        currentHitEffect = triggerEffect(hitEffects, currentHitEffect, myJointPos);
+                        if (conn?.open) conn.send({ type: 'hit' });
+                        return; // Only one hit per frame
                     }
                 }
             }
@@ -218,7 +268,23 @@
         const peerIdInput = document.getElementById('peer-id-input');
         const connectBtn = document.getElementById('connect-btn');
         const statusEl = document.getElementById('status');
+        const gameOverUI = document.getElementById('game-over-ui');
+        const gameOverText = document.getElementById('game-over-text');
+        const playAgainBtn = document.getElementById('play-again-btn');
 
+        // --- Game Logic ---
+        function resetGame() {
+            myHealth = MAX_HEALTH;
+            gameOver = false;
+            gameOverUI.style.display = 'none';
+            updateHealthBar();
+        }
+
+        playAgainBtn.addEventListener('click', () => {
+            resetGame();
+            if (conn?.open) conn.send({ type: 'reset' });
+        });
+        
         // --- PeerJS Logic ---
         let peer;
         let conn;
@@ -231,29 +297,44 @@
             const myId = generateRandomId();
             myIdEl.textContent = myId;
             peer = new Peer(myId);
-            
-            peer.on('connection', (newConn) => setupConnection(newConn));
-            peer.on('error', (err) => {
-                statusEl.textContent = `Error: ${err.type}`;
-                console.error("PeerJS Error:", err);
-            });
+            peer.on('connection', setupConnection);
+            peer.on('error', (err) => { statusEl.textContent = `Error: ${err.type}`; });
         }
 
         function setupConnection(newConn) {
             conn = newConn;
             statusEl.textContent = `Connected to ${conn.peer}`;
+            resetGame();
             peerHead.visible = true;
             peerHand1.visible = true;
             peerHand2.visible = true;
 
             conn.on('data', (data) => {
-                if (data.head) {
-                    peerHead.position.fromArray(data.head.position);
-                    peerHead.quaternion.fromArray(data.head.quaternion);
-                }
-                if (data.hands) {
-                    data.hands[0]?.forEach((pos, i) => peerHand1.children[i]?.position.fromArray(pos));
-                    data.hands[1]?.forEach((pos, i) => peerHand2.children[i]?.position.fromArray(pos));
+                if (gameOver) return;
+                if (data.type === 'hit') {
+                    myHealth--;
+                    updateHealthBar();
+                    if (myHealth <= 0) {
+                        gameOver = true;
+                        gameOverText.textContent = "YOU LOSE";
+                        gameOverUI.style.display = 'block';
+                        conn.send({ type: 'lose' });
+                    }
+                } else if (data.type === 'lose') {
+                    gameOver = true;
+                    gameOverText.textContent = "YOU WIN!";
+                    gameOverUI.style.display = 'block';
+                } else if (data.type === 'reset') {
+                    resetGame();
+                } else {
+                    if (data.head) {
+                        peerHead.position.fromArray(data.head.position);
+                        peerHead.quaternion.fromArray(data.head.quaternion);
+                    }
+                    if (data.hands) {
+                        data.hands[0]?.forEach((pos, i) => peerHand1.children[i]?.position.fromArray(pos));
+                        data.hands[1]?.forEach((pos, i) => peerHand2.children[i]?.position.fromArray(pos));
+                    }
                 }
             });
 
@@ -268,9 +349,7 @@
         
         connectBtn.addEventListener('click', () => {
             const peerId = peerIdInput.value.trim();
-            if (!peerId) {
-                statusEl.textContent = 'Please enter a friend\'s ID.'; return;
-            }
+            if (!peerId) { statusEl.textContent = 'Please enter a friend\'s ID.'; return; }
             if (conn) conn.close();
             statusEl.textContent = `Connecting to ${peerId}...`;
             setupConnection(peer.connect(peerId));
@@ -282,32 +361,21 @@
         renderer.setAnimationLoop(() => {
             const delta = clock.getDelta();
             
-            if (conn && conn.open && renderer.xr.isPresenting) {
+            if (conn?.open && renderer.xr.isPresenting && !gameOver) {
                 const xrCamera = renderer.xr.getCamera();
                 const data = {
-                    head: {
-                        position: xrCamera.position.toArray(),
-                        quaternion: xrCamera.quaternion.toArray()
-                    },
-                    hands: []
+                    head: { position: xrCamera.position.toArray(), quaternion: xrCamera.quaternion.toArray() },
+                    hands: [myHand1, myHand2].map(hand => 
+                        (hand.joints && hand.joints['wrist']?.visible) ? 
+                        Object.values(hand.joints).map(j => j.position.toArray()) : []
+                    )
                 };
-
-                const hands = [myHand1, myHand2];
-                hands.forEach(hand => {
-                    const handData = [];
-                    if (hand.joints && hand.joints['wrist']?.visible) {
-                        for (const joint of Object.values(hand.joints)) {
-                           handData.push(joint.position.toArray());
-                        }
-                    }
-                    data.hands.push(handData);
-                });
-                
                 conn.send(data);
             }
             
             checkCollisions();
-            hitEffectPool.forEach(effect => effect.update(delta));
+            hitEffects.forEach(e => e.update(delta));
+            blockEffects.forEach(e => e.update(delta));
             
             renderer.render(scene, camera);
         });
