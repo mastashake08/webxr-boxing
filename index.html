@@ -88,6 +88,7 @@
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         
         // --- Constants & Game State ---
         const MAX_HEALTH = 5;
@@ -113,19 +114,25 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.xr.enabled = true;
-        renderer.shadowMap.enabled = true; // Enable shadows
+        renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
         
         const vrButton = VRButton.createButton(renderer);
+        vrButton.style.display = 'none'; // Hide initially
         document.body.appendChild(vrButton);
 
-        // Player rig for movement
+        // --- Player & Controls Setup ---
         const player = new THREE.Group();
-        player.position.set(0, 0, 2);
+        player.position.set(0, 1.6, 2);
         player.add(camera);
         scene.add(player);
 
+        let controls; // For PointerLockControls
+        const keys = {};
+        let isLeftPunching = false, leftPunchProgress = 0;
+        let isRightPunching = false, rightPunchProgress = 0;
+        let desktopControlsInitialized = false;
 
         // --- Scene Content ---
         scene.add(new THREE.AmbientLight(0x666666, 1));
@@ -190,9 +197,19 @@
         opponentHand1.add(opponentHand1Collider);
         opponentHand2.add(opponentHand2Collider);
 
+        const controller1 = renderer.xr.getController(0);
+        player.add(controller1); 
+        const controller2 = renderer.xr.getController(1);
+        player.add(controller2);
+        
+        const myFist1 = new THREE.Group();
+        const myFist2 = new THREE.Group();
+        controller1.add(myFist1);
+        controller2.add(myFist2);
 
         const loader = new GLTFLoader();
         const boxingGloveUrl = '/models/boxing_glove.glb';
+
         loader.load(boxingGloveUrl, (gltf) => {
             const baseModel = gltf.scene;
             baseModel.traverse((child) => {
@@ -212,7 +229,7 @@
 
             const playerRightGlove = baseModel.clone();
             playerRightGlove.scale.set(-scale, scale, scale);
-            playerRightGlove.rotation.set(0, Math.PI / 2, 0); 
+            playerRightGlove.rotation.set(0, -Math.PI / 2, 0); 
             myFist2.add(playerRightGlove);
 
             // --- Opponent's Gloves ---
@@ -223,7 +240,7 @@
 
             const opponentRightGlove = baseModel.clone();
             opponentRightGlove.scale.set(-scale, scale, scale);
-            opponentRightGlove.rotation.set(0, -Math.PI / 2, 0);
+            opponentRightGlove.rotation.set(0, Math.PI / 2, 0);
             opponentHand2.add(opponentRightGlove);
 
         }, undefined, (error) => {
@@ -232,16 +249,6 @@
 
         const defaultHead = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.3, 0.2), new THREE.MeshStandardMaterial({ color: 0xff4400 }));
         opponentHead.add(defaultHead);
-
-        const controller1 = renderer.xr.getController(0);
-        player.add(controller1); 
-        const controller2 = renderer.xr.getController(1);
-        player.add(controller2);
-        
-        const myFist1 = new THREE.Group();
-        const myFist2 = new THREE.Group();
-        controller1.add(myFist1);
-        controller2.add(myFist2);
         
         // --- Web Audio ---
         function playHitSound() {
@@ -300,53 +307,41 @@
             for (let i=0; i<10; i++) {
                 const sphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial());
                 sphere.visible = false;
-                sphere.userData = {
-                    active: false,
-                    type: 'hit', // 'hit' or 'dodge'
-                    velocity: new THREE.Vector3(),
-                    lifetime: 0
-                };
+                sphere.userData = { active: false, type: 'hit', velocity: new THREE.Vector3(), lifetime: 0 };
                 trainingSpheres.push(sphere);
                 scene.add(sphere);
             }
         }
         initializeTrainingSpheres();
+        const playerWorldPos = new THREE.Vector3();
         function spawnSphere() {
             let sphere = trainingSpheres.find(s => !s.userData.active);
             if (!sphere) return;
 
             sphere.userData.active = true;
-            sphere.userData.lifetime = 5; // 5 seconds to live
+            sphere.userData.lifetime = 5;
             sphere.visible = true;
 
             const spawnAngle = Math.random() * Math.PI * 2;
             const spawnRadius = 5;
-            sphere.position.set(
-                player.position.x + Math.cos(spawnAngle) * spawnRadius,
-                1 + Math.random(),
-                player.position.z + Math.sin(spawnAngle) * spawnRadius
-            );
+            player.getWorldPosition(playerWorldPos);
+            sphere.position.set( playerWorldPos.x + Math.cos(spawnAngle) * spawnRadius, 1 + Math.random(), playerWorldPos.z + Math.sin(spawnAngle) * spawnRadius);
 
             if (Math.random() > 0.5) {
                 sphere.userData.type = 'hit';
                 sphere.material.color.setHex(0x00ff00);
-                sphere.material.emissive.setHex(0x00ff00);
             } else {
                 sphere.userData.type = 'dodge';
                 sphere.material.color.setHex(0xff0000);
-                sphere.material.emissive.setHex(0xff0000);
             }
-
-            camera.getWorldPosition(playerWorldPos);
             sphere.userData.velocity.subVectors(playerWorldPos, sphere.position).normalize().multiplyScalar(2.5);
         }
         function updateTrainingMode(delta) {
             trainingSpawnTimer -= delta;
             if (trainingSpawnTimer <= 0) {
                 spawnSphere();
-                trainingSpawnTimer = Math.random() * 2 + 1; // Spawn every 1-3 seconds
+                trainingSpawnTimer = Math.random() * 2 + 1;
             }
-
             trainingSpheres.forEach(sphere => {
                 if (sphere.userData.active) {
                     sphere.position.add(sphere.userData.velocity.clone().multiplyScalar(delta));
@@ -365,14 +360,28 @@
         const gameOverEl = document.getElementById('game-over-ui');
         const restartMsgEl = document.getElementById('restart-message');
         
-        function startGameAndEnterVR(mode) {
+        async function checkAndSetupUI() {
+            const vrSupported = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr');
+            
+            if (vrSupported) {
+                vrButton.style.display = 'block';
+            } else {
+                document.getElementById('play-online-btn').textContent += " (Desktop)";
+                document.getElementById('play-ai-btn').textContent += " (Desktop)";
+                document.getElementById('play-training-btn').textContent += " (Desktop)";
+            }
+            document.getElementById('play-online-btn').addEventListener('click', () => startGame('online', vrSupported));
+            document.getElementById('play-ai-btn').addEventListener('click', () => startGame('ai', vrSupported));
+            document.getElementById('play-training-btn').addEventListener('click', () => startGame('training', vrSupported));
+        }
+        checkAndSetupUI();
+        
+        function startGame(mode, vrIsSupported) {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-
             gameMode = mode;
             modeSelectEl.style.display = 'none';
-
             if (mode === 'online') {
                 peerEl.style.display = 'block';
                 initializePeerWithVoice();
@@ -382,56 +391,102 @@
             } else {
                 resetGame();
             }
-
-            if (!renderer.xr.isPresenting) {
+            if (vrIsSupported && !renderer.xr.isPresenting) {
                 vrButton.click();
+            } else if (!vrIsSupported) {
+                initDesktopMode();
             }
         }
-        document.getElementById('play-online-btn').addEventListener('click', () => startGameAndEnterVR('online'));
-        document.getElementById('play-ai-btn').addEventListener('click', () => startGameAndEnterVR('ai'));
-        document.getElementById('play-training-btn').addEventListener('click', () => startGameAndEnterVR('training'));
+        
         document.getElementById('play-again-btn').addEventListener('click', () => {
              if(gameMode === 'online' && conn?.open) conn.send({type:'reset'}); 
             resetGame();
         });
         
-        // --- Player Movement ---
+        // --- Desktop & Player Movement ---
+        function initDesktopMode() {
+            if (desktopControlsInitialized) {
+                controls.lock();
+                return;
+            }
+            controls = new PointerLockControls(camera, renderer.domElement);
+            document.body.addEventListener('click', () => {
+                if (!gameOver && gameMode) controls.lock();
+            });
+            document.addEventListener('keydown', (event) => { keys[event.code] = true; });
+            document.addEventListener('keyup', (event) => { keys[event.code] = false; });
+            document.addEventListener('mousedown', (event) => {
+                if (controls.isLocked) {
+                    if (event.button === 0 && !isLeftPunching) { isLeftPunching = true; leftPunchProgress = 0; }
+                    if (event.button === 2 && !isRightPunching) { isRightPunching = true; rightPunchProgress = 0; }
+                }
+            });
+            controller1.remove(myFist1);
+            controller2.remove(myFist2);
+            camera.add(myFist1);
+            camera.add(myFist2);
+            myFist1.position.set(-0.2, -0.15, -0.5);
+            myFist2.position.set(0.2, -0.15, -0.5);
+            desktopControlsInitialized = true;
+            controls.lock();
+        }
+
         const playerDirection = new THREE.Vector3();
         function handlePlayerMovement(delta) {
-            const session = renderer.xr.getSession();
-            if (!session) return;
-
-            let moveZ = 0;
-            let moveX = 0;
-
-            for (const source of session.inputSources) {
-                if (source.gamepad && source.gamepad.axes.length >= 4) {
-                    const joystickX = source.gamepad.axes[2];
-                    const joystickY = source.gamepad.axes[3];
-                    
-                    if (Math.abs(joystickX) > 0.1) moveX = joystickX;
-                    if (Math.abs(joystickY) > 0.1) moveZ = joystickY;
+            if (renderer.xr.isPresenting) {
+                const session = renderer.xr.getSession();
+                if (!session) return;
+                let moveZ = 0, moveX = 0;
+                for (const source of session.inputSources) {
+                    if (source.gamepad && source.gamepad.axes.length >= 4) {
+                        const joystickX = source.gamepad.axes[2];
+                        const joystickY = source.gamepad.axes[3];
+                        if (Math.abs(joystickX) > 0.1) moveX = joystickX;
+                        if (Math.abs(joystickY) > 0.1) moveZ = joystickY;
+                    }
+                }
+                if (moveX === 0 && moveZ === 0) return;
+                camera.getWorldDirection(playerDirection);
+                playerDirection.y = 0;
+                playerDirection.normalize();
+                const rightDirection = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), playerDirection).normalize();
+                const forwardMovement = playerDirection.multiplyScalar(-moveZ * MOVE_SPEED * delta);
+                const rightMovement = rightDirection.multiplyScalar(-moveX * MOVE_SPEED * delta);
+                player.position.add(forwardMovement).add(rightMovement);
+            } else if (controls && controls.isLocked) {
+                const speed = MOVE_SPEED * delta;
+                if (keys['KeyW'] || keys['ArrowUp']) player.translateZ(-speed);
+                if (keys['KeyS'] || keys['ArrowDown']) player.translateZ(speed);
+                if (keys['KeyA'] || keys['ArrowLeft']) player.translateX(-speed);
+                if (keys['KeyD'] || keys['ArrowRight']) player.translateX(speed);
+            }
+        }
+        
+        function handlePunchingAnimation(delta) {
+            if (renderer.xr.isPresenting) return; // Only for desktop
+            const punchSpeed = delta * 5;
+            const punchDistance = 0.5;
+            if (isLeftPunching) {
+                if (leftPunchProgress < 1.0) {
+                    myFist1.position.z = -0.5 - Math.sin(leftPunchProgress * Math.PI) * punchDistance;
+                    leftPunchProgress += punchSpeed;
+                } else {
+                    isLeftPunching = false; leftPunchProgress = 0; myFist1.position.z = -0.5;
                 }
             }
-
-            if (moveX === 0 && moveZ === 0) return;
-
-            camera.getWorldDirection(playerDirection);
-            playerDirection.y = 0;
-            playerDirection.normalize();
-
-            const rightDirection = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), playerDirection).normalize();
-
-            const forwardMovement = playerDirection.multiplyScalar(-moveZ * MOVE_SPEED * delta);
-            const rightMovement = rightDirection.multiplyScalar(-moveX * MOVE_SPEED * delta);
-
-            player.position.add(forwardMovement).add(rightMovement);
+            if (isRightPunching) {
+                if (rightPunchProgress < 1.0) {
+                    myFist2.position.z = -0.5 - Math.sin(rightPunchProgress * Math.PI) * punchDistance;
+                    rightPunchProgress += punchSpeed;
+                } else {
+                    isRightPunching = false; rightPunchProgress = 0; myFist2.position.z = -0.5;
+                }
+            }
         }
         
         // --- AI Logic ---
         let aiState = 'IDLE', aiStateTimer = 0;
         const aiTargetPos = new THREE.Vector3(0, 1.5, 0);
-        const playerWorldPos = new THREE.Vector3();
         function updateAI(delta) {
             aiStateTimer -= delta;
             camera.getWorldPosition(playerWorldPos);
@@ -443,31 +498,21 @@
                     if (rand < 0.5) { aiState = 'ATTACKING'; aiStateTimer = Math.random() * 0.5 + 0.2; }
                     else if (rand < 0.8) { aiState = 'BLOCKING'; aiStateTimer = Math.random() * 1 + 0.5; }
                     else { aiState = 'DODGING'; aiStateTimer = Math.random() * 0.5 + 0.3; }
-                } else {
-                    aiState = 'IDLE';
-                }
+                } else { aiState = 'IDLE'; }
             }
-
             aiTargetPos.lerp(new THREE.Vector3(playerWorldPos.x, playerWorldPos.y, playerWorldPos.z - 0.7), delta * 2);
             opponentHead.position.lerp(aiTargetPos, delta * 5);
-            
             const blockPos = opponentHead.position.clone();
             const attackHand = (Math.random() < 0.5) ? opponentHand1 : opponentHand2;
             switch(aiState) {
-                case 'ATTACKING':
-                    attackHand.position.lerp(playerWorldPos, delta * 10);
-                    break;
+                case 'ATTACKING': attackHand.position.lerp(playerWorldPos, delta * 10); break;
                 case 'BLOCKING':
                     opponentHand1.position.lerp(blockPos.clone().add(new THREE.Vector3(-0.2, 0.1, -0.2)), delta * 8);
-                    opponentHand2.position.lerp(blockPos.clone().add(new THREE.Vector3(0.2, 0.1, -0.2)), delta * 8);
-                    break;
-                case 'DODGING':
-                    opponentHead.position.x += Math.sin(clock.getElapsedTime() * 20) * delta * 2;
-                    break;
-                default: // IDLE
+                    opponentHand2.position.lerp(blockPos.clone().add(new THREE.Vector3(0.2, 0.1, -0.2)), delta * 8); break;
+                case 'DODGING': opponentHead.position.x += Math.sin(clock.getElapsedTime() * 20) * delta * 2; break;
+                default:
                     opponentHand1.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(-0.3, -0.2, 0)), delta * 5);
-                    opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(0.3, -0.2, 0)), delta * 5);
-                    break;
+                    opponentHand2.position.lerp(opponentHead.position.clone().add(new THREE.Vector3(0.3, -0.2, 0)), delta * 5); break;
             }
             checkAIHits();
         }
@@ -475,7 +520,6 @@
         // --- Collision Detection ---
         function checkCollisions() {
             if (!opponentHead.visible || gameOver || hitCooldown > 0) return;
-
             const myFists = [myFist1, myFist2];
             const opponentHands = [opponentHand1Collider, opponentHand2Collider];
             const fistPos = new THREE.Vector3();
@@ -486,11 +530,10 @@
             for (const fist of myFists) {
                 fist.getWorldPosition(fistPos);
                 let wasBlocked = false;
-
                 for (const oHand of opponentHands) {
                     if (oHand.parent.visible) {
                         oHand.getWorldPosition(opponentHandPos);
-                        if (fistPos.distanceTo(opponentHandPos) < 0.15) { // Using collider radius
+                        if (fistPos.distanceTo(opponentHandPos) < 0.15) {
                             currentBlockEffect = triggerEffect(blockEffects, currentBlockEffect, fistPos);
                             wasBlocked = true;
                             break;
@@ -498,24 +541,19 @@
                     }
                 }
                 if (wasBlocked) continue;
-
-                if (fistPos.distanceTo(opponentHeadPos) < 0.2) { // Using collider size
+                if (fistPos.distanceTo(opponentHeadPos) < 0.2) {
                     hitCooldown = 1.0;
                     currentHitEffect = triggerEffect(hitEffects, currentHitEffect, fistPos);
                     playHitSound();
                     opponentHealth--;
                     updateHealthBars();
-                    if (gameMode === 'online' && conn?.open) {
-                        conn.send({ type: 'hit' });
-                    }
+                    if (gameMode === 'online' && conn?.open) conn.send({ type: 'hit' });
                     if (opponentHealth <= 0) {
                         gameOver = true;
                         document.getElementById('game-over-text').textContent = "YOU WIN!";
                         gameOverEl.style.display = 'block';
                         restartMsgEl.style.display = gameMode === 'ai' ? 'block' : 'none';
-                        if (gameMode === 'online' && conn?.open) {
-                            conn.send({ type: 'lose' });
-                        }
+                        if (gameMode === 'online' && conn?.open) conn.send({ type: 'lose' });
                     }
                     return;
                 }
@@ -523,18 +561,15 @@
         }
         function checkAIHits() {
             if (gameMode !== 'ai' || !opponentHead.visible || gameOver || hitCooldown > 0) return;
-
             const myFists = [myFist1, myFist2];
             const opponentHands = [opponentHand1Collider, opponentHand2Collider];
             const opponentHandPos = new THREE.Vector3();
             const myFistPos = new THREE.Vector3();
             camera.getWorldPosition(playerWorldPos);
-
             for (const oHand of opponentHands) {
                 if (!oHand.parent.visible) continue;
                 oHand.getWorldPosition(opponentHandPos);
                 let wasBlocked = false;
-                
                 for (const myFist of myFists) {
                     myFist.getWorldPosition(myFistPos);
                     if (opponentHandPos.distanceTo(myFistPos) < 0.15) {
@@ -544,7 +579,6 @@
                     }
                 }
                 if (wasBlocked) continue;
-                
                 if (opponentHandPos.distanceTo(playerWorldPos) < 0.25) {
                     hitCooldown = 1.0;
                     currentHitEffect = triggerEffect(hitEffects, currentHitEffect, opponentHandPos);
@@ -566,10 +600,8 @@
             const myFists = [myFist1, myFist2];
             const fistPos = new THREE.Vector3();
             camera.getWorldPosition(playerWorldPos);
-
             trainingSpheres.forEach(sphere => {
                 if (!sphere.userData.active) return;
-                
                 if (sphere.userData.type === 'hit') {
                     for (const fist of myFists) {
                         fist.getWorldPosition(fistPos);
@@ -612,15 +644,12 @@
             peerEl.style.display = 'none';
             modeSelectEl.style.display = 'block';
             restartMsgEl.style.display = 'none';
-
             trainingSpheres.forEach(s => { s.userData.active = false; s.visible = false; });
-            
-            player.position.set(0, 0, 2);
+            player.position.set(0, 1.6, 2);
             opponentHead.visible = false;
             opponentHand1.visible = false;
             opponentHand2.visible = false;
             opponentHealthBar.visible = false;
-
             if(gameMode){
                 modeSelectEl.style.display = 'none';
                 if (gameMode === 'ai' || gameMode === 'online') {
@@ -639,24 +668,21 @@
         // --- PeerJS Logic ---
         let peer, conn;
         function generateRandomId() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
-        
         async function initializePeerWithVoice() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-                localStream.getAudioTracks()[0].enabled = micEnabled; // Start muted
+                localStream.getAudioTracks()[0].enabled = micEnabled;
             } catch (err) {
                 console.error("Could not get microphone access:", err);
             }
             initializePeer();
         }
-
         function initializePeer() {
             const myId = generateRandomId();
             document.getElementById('my-id').textContent = myId;
             peer = new Peer(myId);
             peer.on('connection', setupConnection);
             peer.on('error', (err) => { document.getElementById('status').textContent = `Error: ${err.type}`; });
-
             peer.on('call', (call) => {
                 call.answer(localStream); 
                 call.on('stream', (remoteStream) => {
@@ -667,7 +693,6 @@
                 });
             });
         }
-        
         document.getElementById('connect-btn').addEventListener('click', () => {
             const peerId = document.getElementById('peer-id-input').value.trim();
             if (!peerId) { document.getElementById('status').textContent = 'Please enter a friend\'s ID.'; return; }
@@ -675,13 +700,11 @@
             document.getElementById('status').textContent = `Connecting to ${peerId}...`;
             setupConnection(peer.connect(peerId));
         });
-
         function setupConnection(newConn) {
             conn = newConn;
             document.getElementById('status').textContent = `Connected to ${conn.peer}`;
             resetGame();
             peerEl.style.display = "none";
-
             if (localStream) {
                 const call = peer.call(conn.peer, localStream);
                 call.on('stream', (remoteStream) => {
@@ -691,7 +714,6 @@
                     document.body.appendChild(audio);
                 });
             }
-
             conn.on("data", (data) => {
                 if (gameOver) return;
                 if (data.type === "hit") {
@@ -734,28 +756,21 @@
             handleAButtonRestart();
             handleMicToggle();
         }
-
         function handleAButtonRestart() {
             if (!gameOver || gameMode !== 'ai') {
                 aButtonPressedLastFrame = false;
                 return;
             }
-
             const session = renderer.xr.getSession();
             if (!session) return;
-            
             let aButtonPressed = false;
             for (const source of session.inputSources) {
-                // Oculus Quest A button is typically index 4 on the 'xr-standard-thumbstick' gamepad
                 if (source.gamepad && source.gamepad.buttons.length > 4 && source.gamepad.buttons[4].pressed) {
                     aButtonPressed = true;
                     break;
                 }
             }
-
-            if (aButtonPressed && !aButtonPressedLastFrame) {
-                resetGame();
-            }
+            if (aButtonPressed && !aButtonPressedLastFrame) resetGame();
             aButtonPressedLastFrame = aButtonPressed;
         }
         function handleMicToggle() {
@@ -763,17 +778,14 @@
                 bButtonPressedLastFrame = false;
                 return;
             }
-
             const session = renderer.xr.getSession();
             let bButtonPressed = false;
             for (const source of session.inputSources) {
-                // Oculus Quest B button is typically index 5 on the right controller
                 if (source.handedness === 'right' && source.gamepad && source.gamepad.buttons.length > 5 && source.gamepad.buttons[5].pressed) {
                     bButtonPressed = true;
                     break;
                 }
             }
-
             if (bButtonPressed && !bButtonPressedLastFrame) {
                 micEnabled = !micEnabled;
                 localStream.getAudioTracks()[0].enabled = micEnabled;
@@ -786,10 +798,12 @@
             const delta = clock.getDelta();
             if (hitCooldown > 0) hitCooldown -= delta;
             
-            handleControllerInput();
+            handlePlayerMovement(delta);
             
             if (renderer.xr.isPresenting) {
-                 handlePlayerMovement(delta);
+                handleControllerInput();
+            } else {
+                handlePunchingAnimation(delta);
             }
             
             if (!gameOver) {
